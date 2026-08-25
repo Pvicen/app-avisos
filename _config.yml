@@ -1,0 +1,5 @@
+# GitHub Pages: no publicar en el sitio los archivos que no son parte de la app
+exclude:
+  - README.md
+  - setup/
+  - _config.yml

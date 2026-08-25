@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Avisos</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📌</text></svg>">
+  <meta name="theme-color" content="#2f6fed">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="aviso-config" class="oculto">
+    <p>⚠️ Falta configurar <code>config.js</code> con la URL y la clave de tu proyecto de Supabase. Mira el <code>README.md</code>.</p>
+  </div>
+
+  <section id="pantalla-login" class="oculto">
+    <h1>📌 Avisos</h1>
+    <form id="form-login">
+      <input id="email" type="email" placeholder="Correo" autocomplete="username" required>
+      <input id="password" type="password" placeholder="Contraseña" autocomplete="current-password" required>
+      <button type="submit">Entrar</button>
+      <p id="error-login" class="error oculto"></p>
+    </form>
+  </section>
+
+  <section id="pantalla-app" class="oculto">
+    <header>
+      <h1>📌 Avisos</h1>
+      <button id="btn-salir" title="Cerrar sesión">Salir</button>
+    </header>
+    <form id="form-nuevo">
+      <input id="texto" type="text" placeholder="Nuevo aviso…" autocomplete="off" maxlength="500" required>
+      <button type="submit">Agregar</button>
+    </form>
+    <ul id="lista"></ul>
+    <p id="vacio" class="oculto">No hay avisos pendientes 🎉</p>
+    <p id="estado" class="oculto"></p>
+  </section>
+
+  <div id="toast" class="oculto">
+    <span>Aviso completado</span>
+    <button id="btn-deshacer">Deshacer</button>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js" integrity="sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV" crossorigin="anonymous"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
