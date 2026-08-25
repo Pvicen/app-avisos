@@ -28,7 +28,10 @@
   <section id="pantalla-app" class="oculto">
     <header>
       <h1>📌 Avisos</h1>
-      <button id="btn-salir" title="Cerrar sesión">Salir</button>
+      <div class="botones-header">
+        <button id="btn-historial" title="Ver historial de completados">Historial</button>
+        <button id="btn-salir" title="Cerrar sesión">Salir</button>
+      </div>
     </header>
     <form id="form-nuevo">
       <input id="texto" type="text" placeholder="Nuevo aviso…" autocomplete="off" maxlength="500" required>
@@ -36,8 +39,21 @@
     </form>
     <ul id="lista"></ul>
     <p id="vacio" class="oculto">No hay avisos pendientes 🎉</p>
-    <p id="estado" class="oculto"></p>
   </section>
+
+  <section id="pantalla-historial" class="oculto">
+    <header>
+      <h1>🗂️ Historial</h1>
+      <div class="botones-header">
+        <button id="btn-volver" title="Volver a pendientes">Volver</button>
+      </div>
+    </header>
+    <ul id="lista-historial"></ul>
+    <p id="vacio-historial" class="oculto">Aún no has completado avisos</p>
+    <button id="btn-vaciar" class="oculto">Vaciar historial</button>
+  </section>
+
+  <p id="estado" class="oculto"></p>
 
   <div id="toast" class="oculto">
     <span>Aviso completado</span>

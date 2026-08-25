@@ -6,6 +6,7 @@ const ui = {
   avisoConfig: $("#aviso-config"),
   login: $("#pantalla-login"),
   app: $("#pantalla-app"),
+  historial: $("#pantalla-historial"),
   formLogin: $("#form-login"),
   email: $("#email"),
   password: $("#password"),
@@ -14,18 +15,27 @@ const ui = {
   texto: $("#texto"),
   lista: $("#lista"),
   vacio: $("#vacio"),
+  listaHistorial: $("#lista-historial"),
+  vacioHistorial: $("#vacio-historial"),
+  btnHistorial: $("#btn-historial"),
+  btnVolver: $("#btn-volver"),
+  btnVaciar: $("#btn-vaciar"),
   estado: $("#estado"),
   toast: $("#toast"),
   btnDeshacer: $("#btn-deshacer"),
   btnSalir: $("#btn-salir"),
 };
 
+const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
 let sb = null;
 let canal = null;
 let cargaSeq = 0;               // descarta respuestas obsoletas de cargar()
+let histSeq = 0;                // ídem para el historial
 let reintentoRealtime = null;   // timer de reintento del canal realtime
-let completadosPendientes = []; // pila de avisos completados, para deshacer
+let completadosPendientes = []; // pila de ids completados, para el Deshacer rápido
 let toastTimer = null;
+let refrescoPospuesto = false;  // hubo un refresco mientras se editaba un aviso
 
 function mostrar(el, visible) {
   el.classList.toggle("oculto", !visible);
@@ -36,8 +46,16 @@ function estado(msg) {
   mostrar(ui.estado, Boolean(msg));
 }
 
-function sesionActiva() {
-  return sb !== null && !ui.app.classList.contains("oculto");
+function vistaActual() {
+  if (!ui.historial.classList.contains("oculto")) return "historial";
+  if (!ui.app.classList.contains("oculto")) return "app";
+  return null;
+}
+
+function refrescarVista() {
+  const v = vistaActual();
+  if (v === "historial") cargarHistorial();
+  else if (v === "app") cargar();
 }
 
 async function init() {
@@ -77,11 +95,16 @@ function entrarApp() {
   suscribir();
 }
 
+// ---------- Pendientes ----------
+
 async function cargar() {
   const seq = ++cargaSeq;
   const { data, error } = await sb
     .from("avisos")
     .select("*")
+    .is("completado_en", null)
+    .order("prioridad", { ascending: false })
+    .order("vence", { ascending: true, nullsFirst: false })
     .order("creado_en", { ascending: true });
   if (seq !== cargaSeq) return; // llegó tarde: ya hay una petición más nueva en vuelo
   if (error) {
@@ -92,43 +115,298 @@ async function cargar() {
   render(data);
 }
 
+function hoyLocal() {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+function infoVence(vence) {
+  if (!vence) return null;
+  const [a, m, d] = vence.split("-").map(Number);
+  const dias = Math.round((new Date(a, m - 1, d) - hoyLocal()) / 86400000);
+  if (dias < 0) return { clase: "vencido", texto: "vencido" };
+  if (dias === 0) return { clase: "vencido", texto: "vence hoy" };
+  if (dias === 1) return { clase: "pronto", texto: "vence mañana" };
+  const etiqueta =
+    "vence " + d + " " + MESES[m - 1] + (a !== hoyLocal().getFullYear() ? " " + a : "");
+  return { clase: dias <= 3 ? "pronto" : "normal", texto: etiqueta };
+}
+
+function aplicarRefrescoPospuesto() {
+  if (refrescoPospuesto) {
+    refrescoPospuesto = false;
+    refrescarVista();
+  }
+}
+
 function render(avisos) {
+  // No destruir una edición en curso: el refresco se aplica al terminar de editar
+  if (ui.lista.querySelector("input.editar")) {
+    refrescoPospuesto = true;
+    return;
+  }
   ui.lista.textContent = "";
   for (const aviso of avisos) {
     const li = document.createElement("li");
+    if (aviso.prioridad) li.classList.add("importante");
 
     const check = document.createElement("button");
     check.className = "check";
     check.title = "Marcar como hecho";
     check.addEventListener("click", () => completar(aviso, li));
 
-    const span = document.createElement("span");
-    span.textContent = aviso.texto;
+    const contenido = document.createElement("div");
+    contenido.className = "contenido";
 
-    li.append(check, span);
+    const span = document.createElement("span");
+    span.className = "texto";
+    span.textContent = aviso.texto;
+    contenido.append(span);
+
+    const info = infoVence(aviso.vence);
+    if (info) {
+      const badge = document.createElement("span");
+      badge.className = "badge " + info.clase;
+      badge.textContent = info.texto + " ";
+      const btnSinFecha = document.createElement("button");
+      btnSinFecha.className = "quitar-fecha";
+      btnSinFecha.textContent = "✕";
+      btnSinFecha.title = "Quitar fecha límite";
+      btnSinFecha.addEventListener("click", () => cambiarVence(aviso, ""));
+      badge.append(btnSinFecha);
+      contenido.append(badge);
+    }
+
+    const btnEditar = document.createElement("button");
+    btnEditar.className = "accion";
+    btnEditar.textContent = "✎";
+    btnEditar.title = "Editar";
+    btnEditar.addEventListener("click", () => editar(aviso, span));
+
+    const btnPrio = document.createElement("button");
+    btnPrio.className = "accion prio" + (aviso.prioridad ? " activa" : "");
+    btnPrio.textContent = "⚑";
+    btnPrio.title = aviso.prioridad ? "Quitar importancia" : "Marcar como importante";
+    btnPrio.addEventListener("click", () => cambiarPrioridad(aviso));
+
+    const inputFecha = document.createElement("input");
+    inputFecha.type = "date";
+    inputFecha.className = "fecha-input";
+    inputFecha.value = aviso.vence || "";
+    inputFecha.addEventListener("change", () => cambiarVence(aviso, inputFecha.value));
+
+    const btnFecha = document.createElement("button");
+    btnFecha.className = "accion";
+    btnFecha.textContent = "📅";
+    btnFecha.title = aviso.vence ? "Cambiar fecha límite" : "Poner fecha límite";
+    btnFecha.addEventListener("click", () => {
+      try {
+        inputFecha.showPicker();
+      } catch {
+        inputFecha.classList.add("visible");
+        inputFecha.focus();
+      }
+    });
+
+    li.append(check, contenido, btnEditar, btnPrio, btnFecha, inputFecha);
     ui.lista.append(li);
   }
   mostrar(ui.vacio, avisos.length === 0);
 }
 
-async function completar(aviso, li) {
-  li.classList.add("completado");
-  const { error } = await sb.from("avisos").delete().eq("id", aviso.id);
+// Ejecuta un update verificando que realmente haya afectado una fila:
+// PostgREST responde "éxito" aunque RLS filtre todo o la fila ya no exista.
+async function actualizarAviso(id, cambios, accion) {
+  const { data, error } = await sb.from("avisos").update(cambios).eq("id", id).select("id");
   if (error) {
+    return { fallo: "No se pudo " + accion + ": " + error.message, desaparecido: false };
+  }
+  if (!data || data.length === 0) {
+    return {
+      fallo:
+        "No se pudo " + accion + ": el aviso ya no existe o el cambio no se guardó " +
+        "(si pasa siempre, revisa el correo de la política \"editar avisos\" en Supabase).",
+      desaparecido: true,
+    };
+  }
+  return null;
+}
+
+function editar(aviso, span) {
+  if (!span.isConnected) return; // ya está en edición (el span fue reemplazado)
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "editar";
+  input.maxLength = 500;
+  input.value = aviso.texto;
+
+  const btnOk = document.createElement("button");
+  btnOk.className = "accion ok";
+  btnOk.textContent = "✓";
+  btnOk.title = "Guardar";
+
+  const btnNo = document.createElement("button");
+  btnNo.className = "accion no";
+  btnNo.textContent = "✕";
+  btnNo.title = "Cancelar";
+
+  const caja = document.createElement("span");
+  caja.className = "edicion";
+  caja.append(input, btnOk, btnNo);
+  span.replaceWith(caja);
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+
+  let cerrado = false;
+  const cancelar = () => {
+    if (cerrado) return;
+    cerrado = true;
+    caja.replaceWith(span);
+    aplicarRefrescoPospuesto();
+  };
+  const guardar = async () => {
+    if (cerrado) return;
+    const nuevo = input.value.trim();
+    if (!nuevo || nuevo === aviso.texto) {
+      cancelar();
+      return;
+    }
+    cerrado = true;
+    input.disabled = true;
+    const r = await actualizarAviso(aviso.id, { texto: nuevo }, "editar");
+    if (r) {
+      estado(r.fallo);
+      caja.replaceWith(span);
+      aplicarRefrescoPospuesto();
+      return;
+    }
+    refrescoPospuesto = false;
+    cargar();
+  };
+
+  // mousedown/touchstart llegan ANTES que el blur del input: así ✕ cancela de verdad
+  btnNo.addEventListener("mousedown", (e) => { e.preventDefault(); cancelar(); });
+  btnNo.addEventListener("touchstart", (e) => { e.preventDefault(); cancelar(); }, { passive: false });
+  btnOk.addEventListener("mousedown", (e) => { e.preventDefault(); guardar(); });
+  btnOk.addEventListener("touchstart", (e) => { e.preventDefault(); guardar(); }, { passive: false });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") input.blur();
+    else if (e.key === "Escape") cancelar();
+  });
+  input.addEventListener("blur", guardar);
+}
+
+async function completar(aviso, li) {
+  if (li.classList.contains("completado")) return; // candado anti doble toque
+  li.classList.add("completado");
+  const r = await actualizarAviso(aviso.id, { completado_en: new Date().toISOString() }, "completar");
+  if (r) {
     li.classList.remove("completado");
-    estado("No se pudo completar: " + error.message);
+    estado(r.fallo);
+    if (r.desaparecido) cargar();
     return;
   }
-  completadosPendientes.push({ texto: aviso.texto });
+  completadosPendientes.push(aviso.id);
   mostrarToast();
   setTimeout(cargar, 250); // deja verse la animación y refresca
 }
+
+async function cambiarPrioridad(aviso) {
+  const r = await actualizarAviso(aviso.id, { prioridad: !aviso.prioridad }, "cambiar la prioridad");
+  if (r) {
+    estado(r.fallo);
+    if (r.desaparecido) cargar();
+    return;
+  }
+  cargar();
+}
+
+async function cambiarVence(aviso, valor) {
+  const r = await actualizarAviso(aviso.id, { vence: valor || null }, "cambiar la fecha");
+  if (r) {
+    estado(r.fallo);
+    if (r.desaparecido) cargar();
+    return;
+  }
+  cargar();
+}
+
+// ---------- Historial ----------
+
+async function cargarHistorial() {
+  const seq = ++histSeq;
+  const { data, error } = await sb
+    .from("avisos")
+    .select("*")
+    .not("completado_en", "is", null)
+    .order("completado_en", { ascending: false })
+    .limit(100);
+  if (seq !== histSeq) return;
+  if (error) {
+    estado("No se pudo cargar el historial: " + error.message);
+    return;
+  }
+  estado("");
+  renderHistorial(data);
+}
+
+function formatearFechaHora(iso) {
+  const d = new Date(iso);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return "el " + d.getDate() + " " + MESES[d.getMonth()] + " a las " + hh + ":" + mm;
+}
+
+function renderHistorial(avisos) {
+  ui.listaHistorial.textContent = "";
+  for (const aviso of avisos) {
+    const li = document.createElement("li");
+    li.className = "hecho";
+
+    const contenido = document.createElement("div");
+    contenido.className = "contenido";
+    const span = document.createElement("span");
+    span.className = "texto";
+    span.textContent = aviso.texto;
+    const fecha = document.createElement("span");
+    fecha.className = "badge normal";
+    fecha.textContent = "completado " + formatearFechaHora(aviso.completado_en);
+    contenido.append(span, fecha);
+
+    const btnRestaurar = document.createElement("button");
+    btnRestaurar.className = "accion restaurar";
+    btnRestaurar.textContent = "↩";
+    btnRestaurar.title = "Devolver a pendientes";
+    btnRestaurar.addEventListener("click", () => restaurar(aviso.id));
+
+    li.append(contenido, btnRestaurar);
+    ui.listaHistorial.append(li);
+  }
+  mostrar(ui.vacioHistorial, avisos.length === 0);
+  mostrar(ui.btnVaciar, avisos.length > 0);
+}
+
+async function restaurar(id) {
+  const r = await actualizarAviso(id, { completado_en: null }, "restaurar");
+  if (r) {
+    estado(r.fallo);
+    cargarHistorial();
+    return;
+  }
+  completadosPendientes = completadosPendientes.filter((x) => x !== id);
+  cargarHistorial();
+}
+
+// ---------- Toast / deshacer rápido ----------
 
 function mostrarToast() {
   mostrar(ui.toast, true);
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => mostrar(ui.toast, false), 5000);
 }
+
+// ---------- Realtime ----------
 
 function suscribir() {
   clearTimeout(reintentoRealtime);
@@ -137,11 +415,11 @@ function suscribir() {
     .on(
       "postgres_changes",
       { event: "*", schema: "public", table: "avisos" },
-      () => cargar()
+      () => refrescarVista()
     )
     .subscribe((status) => {
       if (status === "SUBSCRIBED") {
-        cargar(); // re-sincroniza tras cada (re)conexión del canal
+        refrescarVista(); // re-sincroniza tras cada (re)conexión del canal
       } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
         if (canal !== c) return; // aviso tardío de un canal ya reemplazado
         sb.removeChannel(c);
@@ -152,6 +430,8 @@ function suscribir() {
     });
   canal = c;
 }
+
+// ---------- Eventos de la interfaz ----------
 
 ui.formLogin.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -193,17 +473,47 @@ ui.btnDeshacer.addEventListener("click", async () => {
     mostrar(ui.toast, false);
     return;
   }
-  const ultimo = completadosPendientes[completadosPendientes.length - 1];
-  const { error } = await sb.from("avisos").insert({ texto: ultimo.texto });
-  if (error) {
-    estado("No se pudo deshacer: " + error.message);
-    mostrarToast(); // el aviso sigue en la pila: se puede reintentar
+  const id = completadosPendientes[completadosPendientes.length - 1];
+  const r = await actualizarAviso(id, { completado_en: null }, "deshacer");
+  if (r) {
+    estado(r.fallo);
+    if (r.desaparecido) {
+      completadosPendientes.pop(); // borrado desde otro dispositivo: el id ya no sirve
+      mostrar(ui.toast, false);
+      if (completadosPendientes.length > 0) mostrarToast();
+      refrescarVista();
+    } else {
+      mostrarToast(); // error de red: el aviso sigue en la pila, se puede reintentar
+    }
     return;
   }
   completadosPendientes.pop();
   mostrar(ui.toast, false);
   if (completadosPendientes.length > 0) mostrarToast(); // quedan más por deshacer
+  refrescarVista();
+});
+
+ui.btnHistorial.addEventListener("click", () => {
+  mostrar(ui.app, false);
+  mostrar(ui.historial, true);
+  cargarHistorial();
+});
+
+ui.btnVolver.addEventListener("click", () => {
+  mostrar(ui.historial, false);
+  mostrar(ui.app, true);
   cargar();
+});
+
+ui.btnVaciar.addEventListener("click", async () => {
+  if (!window.confirm("¿Borrar definitivamente todo el historial?")) return;
+  const { error } = await sb.from("avisos").delete().not("completado_en", "is", null);
+  if (error) {
+    estado("No se pudo vaciar el historial: " + error.message);
+    return;
+  }
+  completadosPendientes = [];
+  cargarHistorial();
 });
 
 ui.btnSalir.addEventListener("click", async () => {
@@ -215,7 +525,7 @@ ui.btnSalir.addEventListener("click", async () => {
 // Red de seguridad de sincronización: refresca al volver a la pestaña,
 // al recuperar internet, al volver del segundo plano (celular) y cada 2 min.
 function refrescar() {
-  if (sesionActiva()) cargar();
+  if (sb && vistaActual()) refrescarVista();
 }
 window.addEventListener("focus", refrescar);
 window.addEventListener("online", refrescar);
@@ -234,4 +544,10 @@ init();
 // PWA: permite instalar la app y que la cáscara funcione sin conexión
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("./sw.js").catch((err) => console.warn("SW no registrado:", err));
+  // Al publicarse una versión nueva de la app, recargar para no seguir con código viejo
+  let teniaControlador = Boolean(navigator.serviceWorker.controller);
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (teniaControlador) location.reload();
+    teniaControlador = true;
+  });
 }

@@ -9,6 +9,7 @@
   --error: #c0392b;
   --ok: #2e9e5b;
   --sombra: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --pronto: #b45309;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -23,6 +24,7 @@
     --error: #e57368;
     --ok: #58c58a;
     --sombra: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --pronto: #f0a24b;
   }
 }
 
@@ -169,3 +171,132 @@ button[type="submit"]:disabled { opacity: 0.6; cursor: default; }
   cursor: pointer;
   font-size: 0.95rem;
 }
+
+/* --- Historial, prioridades y fechas límite --- */
+
+.botones-header { display: flex; gap: 8px; }
+
+#btn-historial, #btn-volver {
+  background: none;
+  border: 1px solid var(--borde);
+  color: var(--texto-suave);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+#btn-historial:hover, #btn-volver:hover { color: var(--texto); }
+
+#pantalla-historial { width: 100%; max-width: 480px; }
+
+#lista-historial {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#lista-historial li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--tarjeta);
+  border: 1px solid var(--borde);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: var(--sombra);
+}
+
+#lista-historial li .texto {
+  text-decoration: line-through;
+  color: var(--texto-suave);
+  cursor: default;
+}
+
+#lista li { position: relative; }
+#lista li.importante { border-left: 4px solid var(--error); }
+
+.contenido { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.contenido .texto { overflow-wrap: anywhere; }
+
+.badge { font-size: 0.78rem; }
+.badge.normal { color: var(--texto-suave); }
+.badge.pronto { color: var(--pronto); font-weight: 600; }
+.badge.vencido { color: var(--error); font-weight: 600; }
+
+.accion {
+  flex: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.05rem;
+  color: var(--texto-suave);
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+.accion:hover { color: var(--texto); }
+.accion.prio.activa { color: var(--error); }
+
+.fecha-input {
+  position: absolute;
+  bottom: 4px;
+  right: 8px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  border: 0;
+  padding: 0;
+}
+.fecha-input.visible {
+  position: static;
+  width: auto;
+  height: auto;
+  opacity: 1;
+  pointer-events: auto;
+  padding: 4px;
+  border: 1px solid var(--borde);
+  border-radius: 6px;
+  background: var(--tarjeta);
+  color: var(--texto);
+}
+
+input.editar {
+  font: inherit;
+  width: 100%;
+  padding: 2px 6px;
+  border: 1px solid var(--acento);
+  border-radius: 6px;
+  background: var(--tarjeta);
+  color: var(--texto);
+}
+
+#btn-vaciar {
+  margin: 20px auto 0;
+  display: block;
+  background: none;
+  border: 1px solid var(--error);
+  color: var(--error);
+  border-radius: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.edicion { display: flex; align-items: center; gap: 4px; }
+.edicion input.editar { flex: 1; min-width: 0; }
+.accion.ok { color: var(--ok); font-weight: 700; }
+.accion.no { color: var(--error); font-weight: 700; }
+
+.quitar-fecha {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  font-size: 0.78rem;
+  padding: 0 2px;
+  opacity: 0.75;
+}
+.quitar-fecha:hover { opacity: 1; }

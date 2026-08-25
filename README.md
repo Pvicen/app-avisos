@@ -2,7 +2,10 @@
 
 Lista de pendientes compartida entre todos tus dispositivos (PCs, notebook y celular),
 sincronizada en tiempo real. Agregas un aviso en un dispositivo y aparece al instante
-en los demás; lo marcas como hecho y desaparece en todos (con botón "Deshacer" por si
+en los demás; lo marcas como hecho y pasa al historial en todos. Puedes editar un aviso
+tocando su texto, marcarlo como importante (⚑, se pinta rojo y sube al principio),
+ponerle fecha límite (📅, se destaca cuando está por vencer) y revisar o restaurar
+lo completado desde el botón Historial (o el "Deshacer" rápido por si
 te equivocas).
 
 ## Cómo funciona
