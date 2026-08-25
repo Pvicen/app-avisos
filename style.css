@@ -300,3 +300,38 @@ input.editar {
   opacity: 0.75;
 }
 .quitar-fecha:hover { opacity: 1; }
+
+/* --- Notas y notificaciones --- */
+
+.nota {
+  font-size: 0.85rem;
+  color: var(--texto-suave);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.accion.activa-nota { color: var(--acento); }
+
+.edicion-nota { align-items: flex-start; }
+
+textarea.editar-nota {
+  font: inherit;
+  font-size: 0.9rem;
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--acento);
+  border-radius: 6px;
+  background: var(--tarjeta);
+  color: var(--texto);
+  resize: vertical;
+}
+
+#btn-notif {
+  background: none;
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}

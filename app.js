@@ -15,6 +15,7 @@ const ui = {
   texto: $("#texto"),
   lista: $("#lista"),
   vacio: $("#vacio"),
+  btnNotif: $("#btn-notif"),
   listaHistorial: $("#lista-historial"),
   vacioHistorial: $("#vacio-historial"),
   btnHistorial: $("#btn-historial"),
@@ -36,6 +37,7 @@ let reintentoRealtime = null;   // timer de reintento del canal realtime
 let completadosPendientes = []; // pila de ids completados, para el Deshacer rápido
 let toastTimer = null;
 let refrescoPospuesto = false;  // hubo un refresco mientras se editaba un aviso
+let swRegistro = null;          // promesa del registro del service worker
 
 function mostrar(el, visible) {
   el.classList.toggle("oculto", !visible);
@@ -58,7 +60,29 @@ function refrescarVista() {
   else if (v === "app") cargar();
 }
 
+// Texto llegado vía "Compartir → Avisos" desde otra app (Web Share Target)
+function textoCompartido() {
+  const p = new URLSearchParams(location.search);
+  const partes = [p.get("titulo"), p.get("texto"), p.get("url")]
+    .map((x) => (x || "").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  if (!partes.length) return null;
+  const unicos = partes.filter((x, i) => partes.indexOf(x) === i);
+  return unicos.join(" — ").slice(0, 500);
+}
+
 async function init() {
+  const compartido = textoCompartido();
+  if (compartido) {
+    // sessionStorage sobrevive a recargas (auto-actualización del SW, login pendiente)
+    sessionStorage.setItem("borradorCompartido", compartido);
+    history.replaceState(null, "", "./");
+  }
+  const borrador = sessionStorage.getItem("borradorCompartido");
+  if (borrador && !ui.texto.value) {
+    ui.texto.value = borrador; // queda listo en el cajón; el usuario revisa y pulsa Agregar
+  }
+
   const configurado =
     typeof SUPABASE_URL === "string" && SUPABASE_URL.startsWith("https://") &&
     typeof SUPABASE_ANON_KEY === "string" && SUPABASE_ANON_KEY.length > 20;
@@ -93,6 +117,8 @@ function entrarApp() {
   mostrar(ui.app, true);
   cargar();
   suscribir();
+  actualizarBotonNotif();
+  if (ui.texto.value) ui.texto.focus(); // texto compartido esperando confirmación
 }
 
 // ---------- Pendientes ----------
@@ -141,7 +167,7 @@ function aplicarRefrescoPospuesto() {
 
 function render(avisos) {
   // No destruir una edición en curso: el refresco se aplica al terminar de editar
-  if (ui.lista.querySelector("input.editar")) {
+  if (ui.lista.querySelector("input.editar, textarea.editar-nota")) {
     refrescoPospuesto = true;
     return;
   }
@@ -163,6 +189,13 @@ function render(avisos) {
     span.textContent = aviso.texto;
     contenido.append(span);
 
+    if (aviso.nota) {
+      const nota = document.createElement("span");
+      nota.className = "nota";
+      nota.textContent = aviso.nota;
+      contenido.append(nota);
+    }
+
     const info = infoVence(aviso.vence);
     if (info) {
       const badge = document.createElement("span");
@@ -176,6 +209,12 @@ function render(avisos) {
       badge.append(btnSinFecha);
       contenido.append(badge);
     }
+
+    const btnNota = document.createElement("button");
+    btnNota.className = "accion" + (aviso.nota ? " activa-nota" : "");
+    btnNota.textContent = "📝";
+    btnNota.title = aviso.nota ? "Editar la nota" : "Agregar una nota";
+    btnNota.addEventListener("click", () => editarNota(aviso, contenido));
 
     const btnEditar = document.createElement("button");
     btnEditar.className = "accion";
@@ -208,7 +247,7 @@ function render(avisos) {
       }
     });
 
-    li.append(check, contenido, btnEditar, btnPrio, btnFecha, inputFecha);
+    li.append(check, contenido, btnEditar, btnNota, btnPrio, btnFecha, inputFecha);
     ui.lista.append(li);
   }
   mostrar(ui.vacio, avisos.length === 0);
@@ -280,6 +319,7 @@ function editar(aviso, span) {
       aplicarRefrescoPospuesto();
       return;
     }
+    caja.replaceWith(span); // quitar el editor ANTES de refrescar, o render() se pospone eterno
     refrescoPospuesto = false;
     cargar();
   };
@@ -295,6 +335,78 @@ function editar(aviso, span) {
     else if (e.key === "Escape") cancelar();
   });
   input.addEventListener("blur", guardar);
+}
+
+function editarNota(aviso, contenido) {
+  if (contenido.querySelector("textarea.editar-nota")) return; // ya en edición
+  const notaVisible = contenido.querySelector(".nota");
+
+  const area = document.createElement("textarea");
+  area.className = "editar-nota";
+  area.maxLength = 2000;
+  area.rows = 3;
+  area.placeholder = "Nota (deja vacío para quitarla)";
+  area.value = aviso.nota || "";
+
+  const btnOk = document.createElement("button");
+  btnOk.className = "accion ok";
+  btnOk.textContent = "✓";
+  btnOk.title = "Guardar nota";
+
+  const btnNo = document.createElement("button");
+  btnNo.className = "accion no";
+  btnNo.textContent = "✕";
+  btnNo.title = "Cancelar";
+
+  const caja = document.createElement("span");
+  caja.className = "edicion edicion-nota";
+  caja.append(area, btnOk, btnNo);
+  if (notaVisible) notaVisible.replaceWith(caja);
+  else contenido.append(caja);
+  area.focus();
+  area.setSelectionRange(area.value.length, area.value.length);
+
+  let cerrado = false;
+  const restaurar = () => {
+    if (notaVisible) caja.replaceWith(notaVisible);
+    else caja.remove();
+  };
+  const cancelar = () => {
+    if (cerrado) return;
+    cerrado = true;
+    restaurar();
+    aplicarRefrescoPospuesto();
+  };
+  const guardar = async () => {
+    if (cerrado) return;
+    const nueva = area.value.trim();
+    if (nueva === (aviso.nota || "")) {
+      cancelar();
+      return;
+    }
+    cerrado = true;
+    area.disabled = true;
+    const r = await actualizarAviso(aviso.id, { nota: nueva || null }, "guardar la nota");
+    if (r) {
+      estado(r.fallo);
+      restaurar();
+      aplicarRefrescoPospuesto();
+      return;
+    }
+    restaurar(); // quitar el editor ANTES de refrescar, o render() se pospone eterno
+    refrescoPospuesto = false;
+    cargar();
+  };
+
+  btnNo.addEventListener("mousedown", (e) => { e.preventDefault(); cancelar(); });
+  btnNo.addEventListener("touchstart", (e) => { e.preventDefault(); cancelar(); }, { passive: false });
+  btnOk.addEventListener("mousedown", (e) => { e.preventDefault(); guardar(); });
+  btnOk.addEventListener("touchstart", (e) => { e.preventDefault(); guardar(); }, { passive: false });
+
+  area.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") cancelar();
+  });
+  area.addEventListener("blur", guardar);
 }
 
 async function completar(aviso, li) {
@@ -398,6 +510,105 @@ async function restaurar(id) {
   cargarHistorial();
 }
 
+// ---------- Notificaciones push ----------
+
+function base64urlABytes(cadena) {
+  const b64 = cadena.replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+function soportaPush() {
+  return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+}
+
+// Espera al service worker, pero sin colgarse si el registro falló
+async function swListo() {
+  if (!swRegistro) throw new Error("el service worker no está disponible");
+  await swRegistro; // rechaza si el registro falló
+  return await Promise.race([
+    navigator.serviceWorker.ready,
+    new Promise((_, rechazar) =>
+      setTimeout(() => rechazar(new Error("el service worker no respondió")), 5000)
+    ),
+  ]);
+}
+
+async function actualizarBotonNotif() {
+  if (!soportaPush()) {
+    mostrar(ui.btnNotif, false);
+    return;
+  }
+  if (Notification.permission === "denied") {
+    mostrar(ui.btnNotif, true);
+    ui.btnNotif.textContent = "🔕";
+    ui.btnNotif.title = "Notificaciones bloqueadas por el navegador (revísalo en la configuración del sitio)";
+    return;
+  }
+  try {
+    const reg = await swListo();
+    const sus = await reg.pushManager.getSubscription();
+    mostrar(ui.btnNotif, true);
+    ui.btnNotif.textContent = sus ? "🔔" : "🔕";
+    ui.btnNotif.title = sus
+      ? "Notificaciones activadas en este dispositivo (toca para desactivar)"
+      : "Activar notificaciones en este dispositivo";
+  } catch {
+    mostrar(ui.btnNotif, false); // sin SW no hay push que ofrecer
+  }
+}
+
+async function alternarNotificaciones() {
+  if (!soportaPush()) return;
+  ui.btnNotif.disabled = true;
+  try {
+    const reg = await swListo();
+    const actual = await reg.pushManager.getSubscription();
+
+    if (actual) {
+      // primero lo local (si falla, no se ha tocado nada); después la BD
+      await actual.unsubscribe();
+      const { error } = await sb
+        .from("push_suscripciones")
+        .delete()
+        .eq("endpoint", actual.endpoint);
+      if (error) {
+        estado("Notificaciones desactivadas aquí, pero no se pudo borrar el registro del servidor: " + error.message);
+      } else {
+        estado("Notificaciones desactivadas en este dispositivo.");
+      }
+    } else {
+      const permiso = await Notification.requestPermission();
+      if (permiso !== "granted") {
+        estado("No se dio permiso de notificaciones.");
+        return;
+      }
+      const nueva = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: base64urlABytes(VAPID_PUBLIC_KEY),
+      });
+      const { error } = await sb
+        .from("push_suscripciones")
+        .upsert({ endpoint: nueva.endpoint, datos: nueva.toJSON() }, { onConflict: "endpoint" });
+      if (error) {
+        estado("No se pudo registrar el dispositivo: " + error.message);
+        await nueva.unsubscribe();
+        return;
+      }
+      estado("🔔 Notificaciones activadas: te avisaré cuando algo venza.");
+    }
+  } catch (err) {
+    estado("No se pudieron cambiar las notificaciones: " + err.message);
+  } finally {
+    ui.btnNotif.disabled = false;
+    actualizarBotonNotif();
+  }
+}
+
+ui.btnNotif.addEventListener("click", alternarNotificaciones);
+
 // ---------- Toast / deshacer rápido ----------
 
 function mostrarToast() {
@@ -465,7 +676,15 @@ ui.formNuevo.addEventListener("submit", async (e) => {
     ui.texto.value = texto;
     return;
   }
+  sessionStorage.removeItem("borradorCompartido");
   cargar();
+});
+
+// Si el usuario retoca un texto compartido, mantener el borrador al día
+ui.texto.addEventListener("input", () => {
+  if (sessionStorage.getItem("borradorCompartido") !== null) {
+    sessionStorage.setItem("borradorCompartido", ui.texto.value);
+  }
 });
 
 ui.btnDeshacer.addEventListener("click", async () => {
@@ -517,6 +736,19 @@ ui.btnVaciar.addEventListener("click", async () => {
 });
 
 ui.btnSalir.addEventListener("click", async () => {
+  // Apagar las notificaciones de este dispositivo mientras aún hay sesión (RLS)
+  if (soportaPush()) {
+    try {
+      const reg = await swListo();
+      const sus = await reg.pushManager.getSubscription();
+      if (sus) {
+        await sb.from("push_suscripciones").delete().eq("endpoint", sus.endpoint);
+        await sus.unsubscribe();
+      }
+    } catch {
+      // no bloquear el cierre de sesión por esto
+    }
+  }
   // scope local: cierra sesión SOLO en este dispositivo
   const { error } = await sb.auth.signOut({ scope: "local" });
   if (error) estado("No se pudo cerrar sesión: revisa tu conexión e inténtalo de nuevo.");
@@ -543,7 +775,8 @@ init();
 
 // PWA: permite instalar la app y que la cáscara funcione sin conexión
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("./sw.js").catch((err) => console.warn("SW no registrado:", err));
+  swRegistro = navigator.serviceWorker.register("./sw.js");
+  swRegistro.catch((err) => console.warn("SW no registrado:", err));
   // Al publicarse una versión nueva de la app, recargar para no seguir con código viejo
   let teniaControlador = Boolean(navigator.serviceWorker.controller);
   navigator.serviceWorker.addEventListener("controllerchange", () => {

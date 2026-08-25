@@ -5,6 +5,7 @@ sincronizada en tiempo real. Agregas un aviso en un dispositivo y aparece al ins
 en los demás; lo marcas como hecho y pasa al historial en todos. Puedes editar un aviso
 tocando su texto, marcarlo como importante (⚑, se pinta rojo y sube al principio),
 ponerle fecha límite (📅, se destaca cuando está por vencer) y revisar o restaurar
+agregarle una nota con detalles (📝), recibir notificaciones cuando algo venza (🔔) y revisar o restaurar
 lo completado desde el botón Historial (o el "Deshacer" rápido por si
 te equivocas).
 
@@ -61,3 +62,43 @@ así funciona también sin conexión.
 - **PC (Chrome/Edge)**: abre la dirección y pulsa el icono de **instalar** a la derecha
   de la barra de direcciones (o menú ⋮ → "Instalar Avisos"). Queda con ventana propia
   e icono en la barra de tareas, y puedes dejarla como ventanita chica en el escritorio.
+
+## Notificaciones push (opcional)
+
+Para que el celular/PC avise cuando un aviso vence (incluso con la app cerrada) hace falta
+una Edge Function en Supabase que revisa cada hora y envía el push. Configuración (una vez):
+
+1. **Función**: Dashboard → **Edge Functions** → *Deploy a new function* → nombre `notificar`,
+   pega el contenido de [`supabase/functions/notificar/index.ts`](supabase/functions/notificar/index.ts)
+   y despliega. En los detalles de la función, **desactiva "Verify JWT"** (la protege el
+   secreto del cron).
+2. **Secretos**: en Edge Functions → **Secrets** agrega:
+   - `VAPID_KEYS`: el JSON con las llaves VAPID (generadas al configurar el proyecto)
+   - `VAPID_SUBJECT`: `mailto:tu-correo`
+   - `CRON_SECRET`: una cadena aleatoria larga
+3. **Migración**: ejecuta [`setup/migraciones/2026-08-25-notas-notificaciones.sql`](setup/migraciones/2026-08-25-notas-notificaciones.sql)
+   en el SQL Editor (reemplazando el correo).
+4. **Cron**: en el SQL Editor, con tu ref de proyecto y tu CRON_SECRET:
+
+   ```sql
+   create extension if not exists pg_cron;
+   create extension if not exists pg_net;
+   select cron.schedule('avisos-notificar', '5 * * * *', $$
+     select net.http_post(
+       url := 'https://TU_REF.supabase.co/functions/v1/notificar',
+       headers := '{"Content-Type":"application/json","x-cron-secret":"TU_CRON_SECRET"}'::jsonb,
+       body := '{}'::jsonb
+     );
+   $$);
+   ```
+
+5. En la app, toca **🔔** en cada dispositivo donde quieras recibir avisos y acepta el permiso.
+
+La función notifica **una vez por aviso** el día en que vence (desde las 9:00, hora de Chile).
+La llave pública VAPID va en `config.js`; la privada solo vive en los secretos de Supabase.
+
+## Compartir → Aviso (Android)
+
+Con la app instalada, al **Compartir** texto desde cualquier app puedes elegir **Avisos**:
+el texto queda listo en el cajón de "Nuevo aviso" para revisarlo y agregarlo. Si "Avisos" no
+aparece en el menú de compartir, quita el ícono de la pantalla de inicio y vuelve a instalarla.

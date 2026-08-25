@@ -4,7 +4,7 @@
 //
 // Convenio: sube el número de CACHE ("avisos-v3", ...) si cambias cualquier
 // URL de ASSETS o CDN_URL (p. ej. al subir la versión fijada de supabase-js).
-const CACHE = "avisos-v3";
+const CACHE = "avisos-v4";
 const CDN_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js";
 const ASSETS = [
   "./",
@@ -65,8 +65,11 @@ self.addEventListener("fetch", (e) => {
       .then((resp) => {
         if (resp.status === 200) {
           const copia = resp.clone();
+          // Las navegaciones (p. ej. "./?texto=..." de un share) se guardan bajo una
+          // sola clave para no acumular una entrada por cada query distinta
+          const clave = e.request.mode === "navigate" ? "./index.html" : e.request;
           e.waitUntil(
-            caches.open(CACHE).then((c) => c.put(e.request, copia)).catch(() => {})
+            caches.open(CACHE).then((c) => c.put(clave, copia)).catch(() => {})
           );
         }
         return resp;
@@ -81,5 +84,38 @@ self.addEventListener("fetch", (e) => {
         })
       )
       .catch(() => RESPUESTA_OFFLINE())
+  );
+});
+
+// ---------- Notificaciones push ----------
+
+self.addEventListener("push", (e) => {
+  let datos = {};
+  try {
+    datos = e.data ? e.data.json() : {};
+  } catch {
+    datos = {};
+  }
+  e.waitUntil(
+    self.registration.showNotification(datos.titulo || "📌 Avisos", {
+      body: datos.cuerpo || "",
+      icon: "icons/icon-192.png",
+      badge: "icons/icon-192.png",
+      tag: datos.tag || "avisos",
+      data: { url: "./" },
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (e) => {
+  e.notification.close();
+  e.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((ventanas) => {
+      // Solo enfocar ventanas DE ESTA APP (el origen github.io se comparte entre proyectos)
+      const base = self.registration.scope;
+      const propia = ventanas.find((v) => v.url.startsWith(base));
+      if (propia) return propia.focus();
+      return self.clients.openWindow("./");
+    })
   );
 });
