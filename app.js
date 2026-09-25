@@ -1,6 +1,7 @@
 "use strict";
 
 const $ = (sel) => document.querySelector(sel);
+const SVG_NS = "http://www.w3.org/2000/svg";
 
 const ui = {
   avisoConfig: $("#aviso-config"),
@@ -11,6 +12,9 @@ const ui = {
   email: $("#email"),
   password: $("#password"),
   errorLogin: $("#error-login"),
+  saludo: $("#saludo"),
+  ayudaIOS: $("#ayuda-ios"),
+  btnAyudaIOS: $("#btn-ayuda-ios"),
   formNuevo: $("#form-nuevo"),
   texto: $("#texto"),
   lista: $("#lista"),
@@ -24,10 +28,25 @@ const ui = {
   estado: $("#estado"),
   toast: $("#toast"),
   btnDeshacer: $("#btn-deshacer"),
+  btnCuenta: $("#btn-cuenta"),
+  dlgCuenta: $("#dlg-cuenta"),
+  cuentaAvatar: $("#cuenta-avatar"),
+  cuentaNombre: $("#cuenta-nombre"),
+  cuentaCorreo: $("#cuenta-correo"),
+  btnCambiarClave: $("#btn-cambiar-clave"),
+  btnCerrarCuenta: $("#btn-cerrar-cuenta"),
   btnSalir: $("#btn-salir"),
+  dlgClave: $("#dlg-clave"),
+  formClave: $("#form-clave"),
+  claveNueva: $("#clave-nueva"),
+  claveRepetir: $("#clave-repetir"),
+  errorClave: $("#error-clave"),
+  btnCancelarClave: $("#btn-cancelar-clave"),
 };
 
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
+const COLORES_PERSONA = 4;      // p0..p3 en style.css
 
 let sb = null;
 let canal = null;
@@ -36,16 +55,40 @@ let histSeq = 0;                // ídem para el historial
 let reintentoRealtime = null;   // timer de reintento del canal realtime
 let completadosPendientes = []; // pila de ids completados, para el Deshacer rápido
 let toastTimer = null;
+let estadoTimer = null;
 let refrescoPospuesto = false;  // hubo un refresco mientras se editaba un aviso
 let swRegistro = null;          // promesa del registro del service worker
+let personas = new Map();       // correo → { nombre, color }; vacío si la BD no está migrada
+let miCorreo = null;            // correo de quien usa este dispositivo
+let abiertoId = null;           // aviso con sus opciones desplegadas
+let pendientesVisibles = null;  // para el saludo (null = aún sin cargar)
 
 function mostrar(el, visible) {
   el.classList.toggle("oculto", !visible);
 }
 
-function estado(msg) {
+function icono(nombre) {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("class", "ic");
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS(SVG_NS, "use");
+  use.setAttribute("href", "#i-" + nombre);
+  svg.append(use);
+  return svg;
+}
+
+// Los errores quedan a la vista hasta el próximo refresco correcto; los "ok" se van solos
+function estado(msg, tipo) {
+  clearTimeout(estadoTimer);
   ui.estado.textContent = msg || "";
+  ui.estado.classList.toggle("ok", tipo === "ok");
   mostrar(ui.estado, Boolean(msg));
+  if (msg && tipo === "ok") estadoTimer = setTimeout(() => estado(""), 5000);
+}
+
+// El mensaje de estado se muestra bajo la cabecera de la pantalla visible
+function ubicarEstado(pantalla) {
+  (pantalla === ui.historial ? ui.listaHistorial : ui.lista).before(ui.estado);
 }
 
 function vistaActual() {
@@ -80,7 +123,7 @@ async function init() {
   }
   const borrador = sessionStorage.getItem("borradorCompartido");
   if (borrador && !ui.texto.value) {
-    ui.texto.value = borrador; // queda listo en el cajón; el usuario revisa y pulsa Agregar
+    ui.texto.value = borrador; // queda listo en la barra; se revisa y se pulsa +
   }
 
   const configurado =
@@ -102,7 +145,7 @@ async function init() {
 
   const { data: { session } } = await sb.auth.getSession();
   if (session) {
-    entrarApp();
+    entrarApp(session);
   } else {
     mostrar(ui.login, true);
   }
@@ -112,13 +155,70 @@ async function init() {
   });
 }
 
-function entrarApp() {
+function entrarApp(session) {
+  miCorreo = ((session && session.user && session.user.email) || "").toLowerCase() || null;
   mostrar(ui.login, false);
   mostrar(ui.app, true);
+  pintarCuenta();
   cargar();
   suscribir();
   actualizarBotonNotif();
+  mostrarAyudaIOS();
+  cargarPersonas();
   if (ui.texto.value) ui.texto.focus(); // texto compartido esperando confirmación
+}
+
+// ---------- Personas (quién anotó y quién hizo cada aviso) ----------
+
+async function cargarPersonas() {
+  const { data, error } = await sb.from("personas").select("correo, nombre").order("creado_en");
+  if (error || !data) return; // base sin migrar: la app funciona igual, sin nombres
+  personas = new Map(
+    data.map((p, i) => [p.correo, { nombre: p.nombre, color: i % COLORES_PERSONA }])
+  );
+  pintarCuenta();
+  refrescarVista();
+}
+
+function persona(correo) {
+  return correo ? personas.get(correo.toLowerCase()) || null : null;
+}
+
+function inicial(texto) {
+  const primera = Array.from((texto || "").trim())[0];
+  return primera ? primera.toUpperCase() : "?";
+}
+
+function avatar(correo, extra) {
+  const p = persona(correo);
+  const el = document.createElement("span");
+  el.className = "avatar " + (p ? "p" + p.color : "px") + (extra ? " " + extra : "");
+  el.textContent = inicial(p ? p.nombre : correo);
+  return el;
+}
+
+function pintarCuenta() {
+  const yo = persona(miCorreo);
+  ui.btnCuenta.replaceChildren(avatar(miCorreo));
+  ui.cuentaAvatar.replaceChildren(avatar(miCorreo, "grande"));
+  ui.cuentaNombre.textContent = yo ? yo.nombre : "Tu cuenta";
+  ui.cuentaCorreo.textContent = miCorreo || "";
+  actualizarSaludo();
+}
+
+function actualizarSaludo() {
+  const yo = persona(miCorreo);
+  let cuenta = "";
+  if (pendientesVisibles !== null) {
+    cuenta = pendientesVisibles === 0 ? "nada pendiente"
+      : pendientesVisibles === 1 ? "1 pendiente"
+      : pendientesVisibles + " pendientes";
+  }
+  if (yo) {
+    ui.saludo.textContent = "Hola, " + yo.nombre + (cuenta ? " · " + cuenta : "");
+  } else {
+    ui.saludo.textContent = cuenta ? cuenta.charAt(0).toUpperCase() + cuenta.slice(1) : "";
+  }
 }
 
 // ---------- Pendientes ----------
@@ -149,13 +249,14 @@ function hoyLocal() {
 function infoVence(vence) {
   if (!vence) return null;
   const [a, m, d] = vence.split("-").map(Number);
-  const dias = Math.round((new Date(a, m - 1, d) - hoyLocal()) / 86400000);
-  if (dias < 0) return { clase: "vencido", texto: "vencido" };
-  if (dias === 0) return { clase: "vencido", texto: "vence hoy" };
-  if (dias === 1) return { clase: "pronto", texto: "vence mañana" };
-  const etiqueta =
-    "vence " + d + " " + MESES[m - 1] + (a !== hoyLocal().getFullYear() ? " " + a : "");
-  return { clase: dias <= 3 ? "pronto" : "normal", texto: etiqueta };
+  const fecha = new Date(a, m - 1, d);
+  const dias = Math.round((fecha - hoyLocal()) / 86400000);
+  const corta = d + " " + MESES[m - 1] + (a !== hoyLocal().getFullYear() ? " " + a : "");
+  if (dias < 0) return { clase: "vencido", texto: "Venció el " + corta };
+  if (dias === 0) return { clase: "hoy", texto: "Hoy" };
+  if (dias === 1) return { clase: "pronto", texto: "Mañana" };
+  if (dias < 7) return { clase: dias <= 3 ? "pronto" : "normal", texto: DIAS[fecha.getDay()] + " " + d };
+  return { clase: "normal", texto: corta };
 }
 
 function aplicarRefrescoPospuesto() {
@@ -165,20 +266,69 @@ function aplicarRefrescoPospuesto() {
   }
 }
 
+function pildora(nombreIcono, texto, alTocar, activa) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "pildora" + (activa ? " activa" : "");
+  b.append(icono(nombreIcono), document.createTextNode(texto));
+  b.addEventListener("click", alTocar);
+  return b;
+}
+
+// Píldora de fecha: un <input type="date"> invisible la cubre entera, así al
+// tocarla se abre el selector nativo (también en iPhone, sin trucos)
+function pildoraFecha(aviso) {
+  const pildoraEl = document.createElement("label");
+  pildoraEl.className = "pildora";
+  const input = document.createElement("input");
+  input.type = "date";
+  input.value = aviso.vence || "";
+  input.setAttribute("aria-label", aviso.vence ? "Cambiar fecha límite" : "Poner fecha límite");
+  input.addEventListener("change", () => cambiarVence(aviso, input.value));
+  // En PC con ratón, un clic sobre el campo no abre el calendario por sí solo
+  input.addEventListener("click", () => {
+    if (!window.matchMedia("(pointer: fine)").matches) return;
+    try {
+      input.showPicker();
+    } catch {
+      // navegador sin showPicker: el campo recibe el foco y se puede escribir la fecha
+    }
+  });
+  pildoraEl.append(icono("calendario"), document.createTextNode("Fecha"), input);
+  return pildoraEl;
+}
+
+function alternarAbierto(id) {
+  abiertoId = abiertoId === id ? null : id;
+  for (const li of ui.lista.children) {
+    li.classList.toggle("abierto", li.dataset.id === abiertoId);
+  }
+}
+
 function render(avisos) {
   // No destruir una edición en curso: el refresco se aplica al terminar de editar
   if (ui.lista.querySelector("input.editar, textarea.editar-nota")) {
     refrescoPospuesto = true;
     return;
   }
+  pendientesVisibles = avisos.length;
+  actualizarSaludo();
+  const conAutores = personas.size > 1;
   ui.lista.textContent = "";
+
   for (const aviso of avisos) {
     const li = document.createElement("li");
+    li.className = "aviso";
+    li.dataset.id = aviso.id;
     if (aviso.prioridad) li.classList.add("importante");
+    if (aviso.id === abiertoId) li.classList.add("abierto");
 
     const check = document.createElement("button");
+    check.type = "button";
     check.className = "check";
     check.title = "Marcar como hecho";
+    check.setAttribute("aria-label", "Marcar como hecho");
+    check.append(icono("check"));
     check.addEventListener("click", () => completar(aviso, li));
 
     const contenido = document.createElement("div");
@@ -196,58 +346,46 @@ function render(avisos) {
       contenido.append(nota);
     }
 
+    const chips = document.createElement("div");
+    chips.className = "chips";
     const info = infoVence(aviso.vence);
     if (info) {
-      const badge = document.createElement("span");
-      badge.className = "badge " + info.clase;
-      badge.textContent = info.texto + " ";
-      const btnSinFecha = document.createElement("button");
-      btnSinFecha.className = "quitar-fecha";
-      btnSinFecha.textContent = "✕";
-      btnSinFecha.title = "Quitar fecha límite";
-      btnSinFecha.addEventListener("click", () => cambiarVence(aviso, ""));
-      badge.append(btnSinFecha);
-      contenido.append(badge);
+      const chip = document.createElement("span");
+      chip.className = "chip " + info.clase;
+      chip.textContent = info.texto;
+      chips.append(chip);
+    }
+    contenido.append(chips);
+
+    li.append(check, contenido);
+
+    if (conAutores && aviso.creado_por) {
+      const quien = avatar(aviso.creado_por);
+      const p = persona(aviso.creado_por);
+      quien.title = "Lo anotó " + (p ? p.nombre : aviso.creado_por);
+      li.append(quien);
     }
 
-    const btnNota = document.createElement("button");
-    btnNota.className = "accion" + (aviso.nota ? " activa-nota" : "");
-    btnNota.textContent = "📝";
-    btnNota.title = aviso.nota ? "Editar la nota" : "Agregar una nota";
-    btnNota.addEventListener("click", () => editarNota(aviso, contenido));
+    // Opciones: fila a todo el ancho que aparece al tocar la tarjeta
+    const acciones = document.createElement("div");
+    acciones.className = "acciones";
+    acciones.append(
+      pildora("editar", "Editar", () => editar(aviso, span)),
+      pildora("nota", "Nota", () => editarNota(aviso, contenido)),
+      pildora("bandera", "Importante", () => cambiarPrioridad(aviso), aviso.prioridad),
+      pildoraFecha(aviso)
+    );
+    if (aviso.vence) {
+      acciones.append(pildora("x", "Sin fecha", () => cambiarVence(aviso, "")));
+    }
+    li.append(acciones);
 
-    const btnEditar = document.createElement("button");
-    btnEditar.className = "accion";
-    btnEditar.textContent = "✎";
-    btnEditar.title = "Editar";
-    btnEditar.addEventListener("click", () => editar(aviso, span));
-
-    const btnPrio = document.createElement("button");
-    btnPrio.className = "accion prio" + (aviso.prioridad ? " activa" : "");
-    btnPrio.textContent = "⚑";
-    btnPrio.title = aviso.prioridad ? "Quitar importancia" : "Marcar como importante";
-    btnPrio.addEventListener("click", () => cambiarPrioridad(aviso));
-
-    const inputFecha = document.createElement("input");
-    inputFecha.type = "date";
-    inputFecha.className = "fecha-input";
-    inputFecha.value = aviso.vence || "";
-    inputFecha.addEventListener("change", () => cambiarVence(aviso, inputFecha.value));
-
-    const btnFecha = document.createElement("button");
-    btnFecha.className = "accion";
-    btnFecha.textContent = "📅";
-    btnFecha.title = aviso.vence ? "Cambiar fecha límite" : "Poner fecha límite";
-    btnFecha.addEventListener("click", () => {
-      try {
-        inputFecha.showPicker();
-      } catch {
-        inputFecha.classList.add("visible");
-        inputFecha.focus();
-      }
+    // Tocar la tarjeta despliega o recoge sus opciones
+    li.addEventListener("click", (e) => {
+      if (e.target.closest("button, input, textarea, label, .edicion")) return;
+      alternarAbierto(aviso.id);
     });
 
-    li.append(check, contenido, btnEditar, btnNota, btnPrio, btnFecha, inputFecha);
     ui.lista.append(li);
   }
   mostrar(ui.vacio, avisos.length === 0);
@@ -264,11 +402,21 @@ async function actualizarAviso(id, cambios, accion) {
     return {
       fallo:
         "No se pudo " + accion + ": el aviso ya no existe o el cambio no se guardó " +
-        "(si pasa siempre, revisa el correo de la política \"editar avisos\" en Supabase).",
+        "(si pasa siempre, revisa que tu correo esté en la tabla «personas» de Supabase).",
       desaparecido: true,
     };
   }
   return null;
+}
+
+function botonEdicion(clase, nombreIcono, titulo) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "accion " + clase;
+  b.title = titulo;
+  b.setAttribute("aria-label", titulo);
+  b.append(icono(nombreIcono));
+  return b;
 }
 
 function editar(aviso, span) {
@@ -279,15 +427,8 @@ function editar(aviso, span) {
   input.maxLength = 500;
   input.value = aviso.texto;
 
-  const btnOk = document.createElement("button");
-  btnOk.className = "accion ok";
-  btnOk.textContent = "✓";
-  btnOk.title = "Guardar";
-
-  const btnNo = document.createElement("button");
-  btnNo.className = "accion no";
-  btnNo.textContent = "✕";
-  btnNo.title = "Cancelar";
+  const btnOk = botonEdicion("ok", "check", "Guardar");
+  const btnNo = botonEdicion("no", "x", "Cancelar");
 
   const caja = document.createElement("span");
   caja.className = "edicion";
@@ -348,21 +489,14 @@ function editarNota(aviso, contenido) {
   area.placeholder = "Nota (deja vacío para quitarla)";
   area.value = aviso.nota || "";
 
-  const btnOk = document.createElement("button");
-  btnOk.className = "accion ok";
-  btnOk.textContent = "✓";
-  btnOk.title = "Guardar nota";
-
-  const btnNo = document.createElement("button");
-  btnNo.className = "accion no";
-  btnNo.textContent = "✕";
-  btnNo.title = "Cancelar";
+  const btnOk = botonEdicion("ok", "check", "Guardar nota");
+  const btnNo = botonEdicion("no", "x", "Cancelar");
 
   const caja = document.createElement("span");
   caja.className = "edicion edicion-nota";
   caja.append(area, btnOk, btnNo);
   if (notaVisible) notaVisible.replaceWith(caja);
-  else contenido.append(caja);
+  else contenido.insertBefore(caja, contenido.querySelector(".chips"));
   area.focus();
   area.setSelectionRange(area.value.length, area.value.length);
 
@@ -410,18 +544,19 @@ function editarNota(aviso, contenido) {
 }
 
 async function completar(aviso, li) {
-  if (li.classList.contains("completado")) return; // candado anti doble toque
-  li.classList.add("completado");
+  if (li.classList.contains("completando")) return; // candado anti doble toque
+  li.classList.add("completando");
   const r = await actualizarAviso(aviso.id, { completado_en: new Date().toISOString() }, "completar");
   if (r) {
-    li.classList.remove("completado");
+    li.classList.remove("completando");
     estado(r.fallo);
     if (r.desaparecido) cargar();
     return;
   }
+  if (abiertoId === aviso.id) abiertoId = null;
   completadosPendientes.push(aviso.id);
   mostrarToast();
-  setTimeout(cargar, 250); // deja verse la animación y refresca
+  setTimeout(cargar, 450); // deja verse la animación y refresca
 }
 
 async function cambiarPrioridad(aviso) {
@@ -467,32 +602,41 @@ function formatearFechaHora(iso) {
   const d = new Date(iso);
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
-  return "el " + d.getDate() + " " + MESES[d.getMonth()] + " a las " + hh + ":" + mm;
+  return d.getDate() + " " + MESES[d.getMonth()] + ", " + hh + ":" + mm;
 }
 
 function renderHistorial(avisos) {
   ui.listaHistorial.textContent = "";
+  const conAutores = personas.size > 1;
   for (const aviso of avisos) {
     const li = document.createElement("li");
-    li.className = "hecho";
+    li.className = "aviso hecho";
+
+    const marca = document.createElement("span");
+    marca.className = "check lleno";
+    marca.append(icono("check"));
 
     const contenido = document.createElement("div");
     contenido.className = "contenido";
     const span = document.createElement("span");
     span.className = "texto";
     span.textContent = aviso.texto;
-    const fecha = document.createElement("span");
-    fecha.className = "badge normal";
-    fecha.textContent = "completado " + formatearFechaHora(aviso.completado_en);
-    contenido.append(span, fecha);
+    const meta = document.createElement("span");
+    meta.className = "meta";
+    const quien = persona(aviso.completado_por);
+    const cuando = formatearFechaHora(aviso.completado_en);
+    meta.textContent = conAutores && quien ? "Lo hizo " + quien.nombre + " · " + cuando : "Hecho el " + cuando;
+    contenido.append(span, meta);
 
     const btnRestaurar = document.createElement("button");
-    btnRestaurar.className = "accion restaurar";
-    btnRestaurar.textContent = "↩";
+    btnRestaurar.type = "button";
+    btnRestaurar.className = "icono";
     btnRestaurar.title = "Devolver a pendientes";
+    btnRestaurar.setAttribute("aria-label", "Devolver a pendientes");
+    btnRestaurar.append(icono("deshacer"));
     btnRestaurar.addEventListener("click", () => restaurar(aviso.id));
 
-    li.append(contenido, btnRestaurar);
+    li.append(marca, contenido, btnRestaurar);
     ui.listaHistorial.append(li);
   }
   mostrar(ui.vacioHistorial, avisos.length === 0);
@@ -536,6 +680,13 @@ async function swListo() {
   ]);
 }
 
+function pintarCampana(activa, titulo) {
+  ui.btnNotif.replaceChildren(icono(activa ? "campana" : "campana-off"));
+  ui.btnNotif.classList.toggle("activa", activa);
+  ui.btnNotif.title = titulo;
+  ui.btnNotif.setAttribute("aria-label", titulo);
+}
+
 async function actualizarBotonNotif() {
   if (!soportaPush()) {
     mostrar(ui.btnNotif, false);
@@ -543,18 +694,19 @@ async function actualizarBotonNotif() {
   }
   if (Notification.permission === "denied") {
     mostrar(ui.btnNotif, true);
-    ui.btnNotif.textContent = "🔕";
-    ui.btnNotif.title = "Notificaciones bloqueadas por el navegador (revísalo en la configuración del sitio)";
+    pintarCampana(false, "Notificaciones bloqueadas por el navegador (revísalo en la configuración del sitio)");
     return;
   }
   try {
     const reg = await swListo();
     const sus = await reg.pushManager.getSubscription();
     mostrar(ui.btnNotif, true);
-    ui.btnNotif.textContent = sus ? "🔔" : "🔕";
-    ui.btnNotif.title = sus
-      ? "Notificaciones activadas en este dispositivo (toca para desactivar)"
-      : "Activar notificaciones en este dispositivo";
+    pintarCampana(
+      Boolean(sus),
+      sus
+        ? "Notificaciones activadas en este dispositivo (toca para desactivar)"
+        : "Activar notificaciones en este dispositivo"
+    );
   } catch {
     mostrar(ui.btnNotif, false); // sin SW no hay push que ofrecer
   }
@@ -562,6 +714,9 @@ async function actualizarBotonNotif() {
 
 async function alternarNotificaciones() {
   if (!soportaPush()) return;
+  // iPhone exige pedir el permiso en el mismo toque, antes de cualquier espera
+  const permisoEnCurso =
+    Notification.permission === "default" ? Notification.requestPermission() : null;
   ui.btnNotif.disabled = true;
   try {
     const reg = await swListo();
@@ -577,10 +732,10 @@ async function alternarNotificaciones() {
       if (error) {
         estado("Notificaciones desactivadas aquí, pero no se pudo borrar el registro del servidor: " + error.message);
       } else {
-        estado("Notificaciones desactivadas en este dispositivo.");
+        estado("Notificaciones desactivadas en este dispositivo.", "ok");
       }
     } else {
-      const permiso = await Notification.requestPermission();
+      const permiso = permisoEnCurso ? await permisoEnCurso : Notification.permission;
       if (permiso !== "granted") {
         estado("No se dio permiso de notificaciones.");
         return;
@@ -597,7 +752,7 @@ async function alternarNotificaciones() {
         await nueva.unsubscribe();
         return;
       }
-      estado("🔔 Notificaciones activadas: te avisaré cuando algo venza.");
+      estado("Notificaciones activadas: este dispositivo avisará cuando algo venza.", "ok");
     }
   } catch (err) {
     estado("No se pudieron cambiar las notificaciones: " + err.message);
@@ -608,6 +763,37 @@ async function alternarNotificaciones() {
 }
 
 ui.btnNotif.addEventListener("click", alternarNotificaciones);
+
+// ---------- iPhone: cómo instalarla ----------
+
+function esIOS() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function estaInstalada() {
+  return window.navigator.standalone === true ||
+    window.matchMedia("(display-mode: standalone)").matches;
+}
+
+function mostrarAyudaIOS() {
+  let cerrada = false;
+  try {
+    cerrada = localStorage.getItem("ayudaIOSCerrada") === "1";
+  } catch {
+    // almacenamiento bloqueado: se muestra igual
+  }
+  mostrar(ui.ayudaIOS, esIOS() && !estaInstalada() && !cerrada);
+}
+
+ui.btnAyudaIOS.addEventListener("click", () => {
+  try {
+    localStorage.setItem("ayudaIOSCerrada", "1");
+  } catch {
+    // sin almacenamiento: se cierra solo por ahora
+  }
+  mostrar(ui.ayudaIOS, false);
+});
 
 // ---------- Toast / deshacer rápido ----------
 
@@ -642,6 +828,73 @@ function suscribir() {
   canal = c;
 }
 
+// ---------- Cuenta ----------
+
+function abrirHoja(dlg) {
+  if (typeof dlg.showModal === "function") dlg.showModal();
+  else dlg.setAttribute("open", "");
+}
+
+function cerrarHoja(dlg) {
+  if (typeof dlg.close === "function") dlg.close();
+  else dlg.removeAttribute("open");
+}
+
+// Tocar fuera de la hoja (en el velo) la cierra
+for (const dlg of [ui.dlgCuenta, ui.dlgClave]) {
+  dlg.addEventListener("click", (e) => {
+    if (e.target === dlg) cerrarHoja(dlg);
+  });
+}
+
+ui.btnCuenta.addEventListener("click", () => abrirHoja(ui.dlgCuenta));
+ui.btnCerrarCuenta.addEventListener("click", () => cerrarHoja(ui.dlgCuenta));
+
+ui.btnCambiarClave.addEventListener("click", () => {
+  cerrarHoja(ui.dlgCuenta);
+  ui.formClave.reset();
+  mostrar(ui.errorClave, false);
+  abrirHoja(ui.dlgClave);
+  ui.claveNueva.focus();
+});
+
+ui.btnCancelarClave.addEventListener("click", () => cerrarHoja(ui.dlgClave));
+
+function errorClave(msg) {
+  ui.errorClave.textContent = msg;
+  mostrar(ui.errorClave, true);
+}
+
+ui.formClave.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const nueva = ui.claveNueva.value;
+  if (nueva.length < 8) {
+    errorClave("Usa al menos 8 caracteres.");
+    return;
+  }
+  if (nueva !== ui.claveRepetir.value) {
+    errorClave("Las dos contraseñas no coinciden.");
+    return;
+  }
+  mostrar(ui.errorClave, false);
+  const boton = ui.formClave.querySelector("button[type='submit']");
+  boton.disabled = true;
+  const { error } = await sb.auth.updateUser({ password: nueva });
+  boton.disabled = false;
+  if (error) {
+    const codigo = error.code || "";
+    if (codigo === "same_password") errorClave("Tiene que ser distinta de la actual.");
+    else if (codigo === "weak_password") errorClave("Es muy débil: prueba con una más larga.");
+    else if (codigo === "reauthentication_needed") {
+      errorClave("Por seguridad, cierra sesión, vuelve a entrar y repite el cambio.");
+    } else errorClave("No se pudo cambiar: " + error.message);
+    return;
+  }
+  ui.formClave.reset();
+  cerrarHoja(ui.dlgClave);
+  estado("Contraseña cambiada. Úsala la próxima vez que entres.", "ok");
+});
+
 // ---------- Eventos de la interfaz ----------
 
 ui.formLogin.addEventListener("submit", async (e) => {
@@ -649,7 +902,7 @@ ui.formLogin.addEventListener("submit", async (e) => {
   mostrar(ui.errorLogin, false);
   const boton = ui.formLogin.querySelector("button");
   boton.disabled = true;
-  const { error } = await sb.auth.signInWithPassword({
+  const { data, error } = await sb.auth.signInWithPassword({
     email: ui.email.value.trim(),
     password: ui.password.value,
   });
@@ -662,7 +915,7 @@ ui.formLogin.addEventListener("submit", async (e) => {
     mostrar(ui.errorLogin, true);
     return;
   }
-  entrarApp();
+  entrarApp(data.session);
 });
 
 ui.formNuevo.addEventListener("submit", async (e) => {
@@ -685,6 +938,11 @@ ui.texto.addEventListener("input", () => {
   if (sessionStorage.getItem("borradorCompartido") !== null) {
     sessionStorage.setItem("borradorCompartido", ui.texto.value);
   }
+});
+
+// Tocar fuera de la lista recoge las opciones del aviso desplegado
+document.addEventListener("click", (e) => {
+  if (abiertoId && !e.target.closest("#lista")) alternarAbierto(abiertoId);
 });
 
 ui.btnDeshacer.addEventListener("click", async () => {
@@ -714,18 +972,28 @@ ui.btnDeshacer.addEventListener("click", async () => {
 
 ui.btnHistorial.addEventListener("click", () => {
   mostrar(ui.app, false);
+  mostrar(ui.toast, false);
   mostrar(ui.historial, true);
+  ubicarEstado(ui.historial);
+  estado("");
+  window.scrollTo(0, 0);
   cargarHistorial();
 });
 
 ui.btnVolver.addEventListener("click", () => {
   mostrar(ui.historial, false);
   mostrar(ui.app, true);
+  ubicarEstado(ui.app);
+  estado("");
+  window.scrollTo(0, 0);
   cargar();
 });
 
 ui.btnVaciar.addEventListener("click", async () => {
-  if (!window.confirm("¿Borrar definitivamente todo el historial?")) return;
+  const aviso = personas.size > 1
+    ? "¿Borrar definitivamente todo el historial? Se borra para todos."
+    : "¿Borrar definitivamente todo el historial?";
+  if (!window.confirm(aviso)) return;
   const { error } = await sb.from("avisos").delete().not("completado_en", "is", null);
   if (error) {
     estado("No se pudo vaciar el historial: " + error.message);
@@ -736,6 +1004,7 @@ ui.btnVaciar.addEventListener("click", async () => {
 });
 
 ui.btnSalir.addEventListener("click", async () => {
+  cerrarHoja(ui.dlgCuenta);
   // Apagar las notificaciones de este dispositivo mientras aún hay sesión (RLS)
   if (soportaPush()) {
     try {
@@ -753,6 +1022,19 @@ ui.btnSalir.addEventListener("click", async () => {
   const { error } = await sb.auth.signOut({ scope: "local" });
   if (error) estado("No se pudo cerrar sesión: revisa tu conexión e inténtalo de nuevo.");
 });
+
+// iPhone: el teclado tapa lo que está fijo abajo; se sube la barra de escribir.
+// (En Android lo resuelve interactive-widget=resizes-content y esto da 0.)
+function ajustarTeclado() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const tapado = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+  document.documentElement.style.setProperty("--teclado", tapado + "px");
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", ajustarTeclado);
+  window.visualViewport.addEventListener("scroll", ajustarTeclado);
+}
 
 // Red de seguridad de sincronización: refresca al volver a la pestaña,
 // al recuperar internet, al volver del segundo plano (celular) y cada 2 min.

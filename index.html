@@ -2,64 +2,153 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
   <title>Avisos</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📌</text></svg>">
-  <meta name="theme-color" content="#2f6fed">
+  <link rel="icon" href="icons/icon-192.png">
+  <meta name="theme-color" content="#fbf5ee" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1b1613" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Avisos">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <svg class="sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-mas" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+    <symbol id="i-atras" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+    <symbol id="i-deshacer" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+    <symbol id="i-campana" viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 8 2.5 8h-17S6 15 6 9"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/></symbol>
+    <symbol id="i-campana-off" viewBox="0 0 24 24"><path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 8 2.5 8h-17S6 15 6 9"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/><path d="M3.5 3.5l17 17"/></symbol>
+    <symbol id="i-historial" viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.5-6"/><path d="M3.5 4v5h5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-editar" viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.83 2.83 0 0 0-4-4L4 16v4"/><path d="M13.5 6.5l4 4"/></symbol>
+    <symbol id="i-nota" viewBox="0 0 24 24"><rect x="5" y="3.5" width="14" height="17" rx="2.5"/><path d="M9 8.5h6M9 12h6M9 15.5h3.5"/></symbol>
+    <symbol id="i-bandera" viewBox="0 0 24 24"><path d="M5.5 21V4.5"/><path d="M5.5 4.5h12L15 8.75 17.5 13h-12"/></symbol>
+    <symbol id="i-calendario" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15.5" rx="2.5"/><path d="M8 3v4M16 3v4M4 10h16"/></symbol>
+    <symbol id="i-llave" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l8.5-8.5M17 6l2.5 2.5M14.5 8.5l2 2"/></symbol>
+    <symbol id="i-salir" viewBox="0 0 24 24"><path d="M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2"/><path d="M10 12h10.5M17.5 9l3 3-3 3"/></symbol>
+    <symbol id="i-compartir-ios" viewBox="0 0 24 24"><path d="M12 15V3.5M8 7.5l4-4 4 4"/><path d="M7.5 10.5h-1a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-6.5a2 2 0 0 0-2-2h-1"/></symbol>
+  </svg>
+
   <div id="aviso-config" class="oculto">
     <p>⚠️ Falta configurar <code>config.js</code> con la URL y la clave de tu proyecto de Supabase. Mira el <code>README.md</code>.</p>
   </div>
 
   <section id="pantalla-login" class="oculto">
-    <h1>📌 Avisos</h1>
-    <form id="form-login">
-      <input id="email" type="email" placeholder="Correo" autocomplete="username" required>
-      <input id="password" type="password" placeholder="Contraseña" autocomplete="current-password" required>
-      <button type="submit">Entrar</button>
-      <p id="error-login" class="error oculto"></p>
-    </form>
+    <div class="login-tarjeta">
+      <img class="logo" src="icons/icon-192.png" alt="">
+      <h1>Avisos</h1>
+      <p class="sub">Entra con tu cuenta</p>
+      <form id="form-login">
+        <input id="email" class="campo" type="email" placeholder="Correo" autocomplete="username" required>
+        <input id="password" class="campo" type="password" placeholder="Contraseña" autocomplete="current-password" required>
+        <button type="submit" class="boton-principal">Entrar</button>
+        <p id="error-login" class="error oculto"></p>
+      </form>
+    </div>
   </section>
 
   <section id="pantalla-app" class="oculto">
-    <header>
-      <h1>📌 Avisos</h1>
+    <header class="cabecera">
+      <div class="titulos">
+        <h1>Avisos</h1>
+        <p id="saludo" class="saludo"></p>
+      </div>
       <div class="botones-header">
-        <button id="btn-notif" class="oculto" title="Activar notificaciones en este dispositivo">🔕</button>
-        <button id="btn-historial" title="Ver historial de completados">Historial</button>
-        <button id="btn-salir" title="Cerrar sesión">Salir</button>
+        <button id="btn-notif" class="icono oculto" type="button" aria-label="Activar notificaciones">
+          <svg class="ic" aria-hidden="true"><use href="#i-campana-off"></use></svg>
+        </button>
+        <button id="btn-historial" class="icono" type="button" aria-label="Historial" title="Historial de completados">
+          <svg class="ic" aria-hidden="true"><use href="#i-historial"></use></svg>
+        </button>
+        <button id="btn-cuenta" class="avatar-boton" type="button" aria-label="Tu cuenta" title="Tu cuenta"></button>
       </div>
     </header>
-    <form id="form-nuevo">
-      <input id="texto" type="text" placeholder="Nuevo aviso…" autocomplete="off" maxlength="500" required>
-      <button type="submit">Agregar</button>
-    </form>
+
+    <div id="ayuda-ios" class="ayuda oculto">
+      <p>Instálala en tu iPhone: toca <svg class="ic ic-linea" aria-hidden="true"><use href="#i-compartir-ios"></use></svg> <b>Compartir</b> y luego <b>«Agregar a inicio»</b>. Así se abre como app y puede enviarte notificaciones.</p>
+      <button id="btn-ayuda-ios" class="icono chico" type="button" aria-label="Cerrar ayuda">
+        <svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg>
+      </button>
+    </div>
+
+    <p id="estado" class="estado oculto" role="status"></p>
+
     <ul id="lista"></ul>
-    <p id="vacio" class="oculto">No hay avisos pendientes 🎉</p>
+
+    <div id="vacio" class="vacio oculto">
+      <div class="vacio-icono"><svg class="ic" aria-hidden="true"><use href="#i-check"></use></svg></div>
+      <p class="vacio-titulo">Todo al día</p>
+      <p class="vacio-texto">Anota abajo lo que quede pendiente.</p>
+    </div>
+
+    <form id="form-nuevo" class="compositor">
+      <div class="compositor-interior">
+        <input id="texto" type="text" placeholder="Escribe un aviso…" autocomplete="off" maxlength="500" enterkeyhint="send" required>
+        <button type="submit" class="boton-mas" aria-label="Agregar aviso" title="Agregar">
+          <svg class="ic" aria-hidden="true"><use href="#i-mas"></use></svg>
+        </button>
+      </div>
+    </form>
   </section>
 
   <section id="pantalla-historial" class="oculto">
-    <header>
-      <h1>🗂️ Historial</h1>
-      <div class="botones-header">
-        <button id="btn-volver" title="Volver a pendientes">Volver</button>
-      </div>
+    <header class="cabecera con-volver">
+      <button id="btn-volver" class="icono" type="button" aria-label="Volver a pendientes" title="Volver">
+        <svg class="ic" aria-hidden="true"><use href="#i-atras"></use></svg>
+      </button>
+      <h1>Historial</h1>
     </header>
     <ul id="lista-historial"></ul>
-    <p id="vacio-historial" class="oculto">Aún no has completado avisos</p>
-    <button id="btn-vaciar" class="oculto">Vaciar historial</button>
+    <p id="vacio-historial" class="vacio-simple oculto">Todavía no hay avisos completados.</p>
+    <button id="btn-vaciar" class="boton-peligro oculto" type="button">Vaciar historial</button>
   </section>
 
-  <p id="estado" class="oculto"></p>
-
-  <div id="toast" class="oculto">
+  <div id="toast" class="toast oculto" role="status">
     <span>Aviso completado</span>
-    <button id="btn-deshacer">Deshacer</button>
+    <button id="btn-deshacer" type="button">Deshacer</button>
   </div>
+
+  <dialog id="dlg-cuenta" class="hoja" aria-label="Tu cuenta">
+    <div class="hoja-interior">
+      <div class="hoja-cabeza">
+        <span id="cuenta-avatar"></span>
+        <div class="hoja-datos">
+          <p id="cuenta-nombre" class="hoja-titulo"></p>
+          <p id="cuenta-correo" class="hoja-sub"></p>
+        </div>
+      </div>
+      <button id="btn-cambiar-clave" class="fila-menu" type="button">
+        <svg class="ic" aria-hidden="true"><use href="#i-llave"></use></svg>Cambiar contraseña
+      </button>
+      <button id="btn-salir" class="fila-menu peligro" type="button">
+        <svg class="ic" aria-hidden="true"><use href="#i-salir"></use></svg>Cerrar sesión
+      </button>
+      <button id="btn-cerrar-cuenta" class="fila-menu suave" type="button">Cerrar</button>
+    </div>
+  </dialog>
+
+  <dialog id="dlg-clave" class="hoja" aria-label="Cambiar contraseña">
+    <div class="hoja-interior">
+      <form id="form-clave">
+        <p class="hoja-titulo">Cambiar contraseña</p>
+        <p class="hoja-sub">Usa al menos 8 caracteres. Será la que uses para entrar desde cualquier dispositivo.</p>
+        <input id="clave-nueva" class="campo" type="password" placeholder="Contraseña nueva" autocomplete="new-password" required>
+        <input id="clave-repetir" class="campo" type="password" placeholder="Repite la contraseña" autocomplete="new-password" required>
+        <p id="error-clave" class="error oculto"></p>
+        <div class="hoja-botones">
+          <button id="btn-cancelar-clave" class="boton-suave" type="button">Cancelar</button>
+          <button type="submit" class="boton-principal">Guardar</button>
+        </div>
+      </form>
+    </div>
+  </dialog>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js" integrity="sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV" crossorigin="anonymous"></script>
   <script src="config.js"></script>

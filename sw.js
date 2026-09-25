@@ -4,7 +4,7 @@
 //
 // Convenio: sube el número de CACHE ("avisos-v3", ...) si cambias cualquier
 // URL de ASSETS o CDN_URL (p. ej. al subir la versión fijada de supabase-js).
-const CACHE = "avisos-v4";
+const CACHE = "avisos-v5";
 const CDN_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js";
 const ASSETS = [
   "./",
