@@ -20,6 +20,16 @@ Nada de esto es bloqueante ni pone en riesgo datos o seguridad.
 - **Notificaciones sin autoría.** Llegan a todos los dispositivos de todas las personas,
   sin decir quién anotó el aviso.
 
+## Hora exacta: la función `Notificar` (2026-10-08)
+
+- **Puede llegar hasta un minuto tarde.** El cron la llama cada minuto: un aviso de las 18:00 suena
+  en la vuelta de las 18:00 o en la siguiente.
+- **Si la función se corta en mitad del envío, ese aviso no vuelve a sonar.** Antes de enviar se
+  reserva (se escriben sus marcas) para que dos vueltas no lo repitan; si el corte llega entre la
+  reserva y el envío, la marca se queda puesta. Se ve en la app, que sigue mostrando el aviso.
+- **Si el push falla siempre (no por dispositivo caducado), se reintenta cada minuto** y deja una
+  línea «Fallo push» en los logs de la función en cada vuelta.
+
 ## Panel personal: Edge Function `panel-subir` (2026-10-08)
 
 - **El validador no mira el reloj.** No comprueba que el primer día de `dias` sea hoy ni que las
