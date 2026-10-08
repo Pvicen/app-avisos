@@ -187,11 +187,16 @@ async function init() {
     mostrar(ui.login, true);
   }
 
-  sb.auth.onAuthStateChange((evento) => {
+  sb.auth.onAuthStateChange((evento, sesion) => {
     if (evento === "SIGNED_OUT") {
       borrarPanelLocal(); // también si la sesión se cerró desde otro sitio
       location.reload();
+      return;
     }
+    // Otra pestaña entró con OTRA cuenta: esta no puede seguir con la anterior (ni con su panel).
+    // Con la misma cuenta, o antes de entrar (miCorreo vacío), no se hace nada: sin bucles.
+    const correo = ((sesion && sesion.user && sesion.user.email) || "").toLowerCase();
+    if (miCorreo && correo && correo !== miCorreo) location.reload();
   });
 }
 
