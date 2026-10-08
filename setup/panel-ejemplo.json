@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "generado": "2026-10-08T17:10:00+02:00",
+  "dias": [
+    {
+      "fecha": "2026-10-08",
+      "clases": "Astronomía 9-11 · Botánica 12-14",
+      "estudio": [
+        { "materia": "Astronomía", "texto": "Repasar las leyes de Kepler", "duracion": "1h" },
+        { "materia": "Música", "texto": "Intervalos: ejercicios 1 a 5", "duracion": "45 min" }
+      ]
+    },
+    {
+      "fecha": "2026-10-09",
+      "clases": "Música 10-12",
+      "estudio": [
+        { "materia": "Botánica", "texto": "Leer el capítulo 3: fotosíntesis", "duracion": "1h 30min" }
+      ]
+    },
+    {
+      "fecha": "2026-10-10",
+      "clases": "",
+      "estudio": []
+    }
+  ],
+  "entregas": [
+    {
+      "materia": "Botánica",
+      "titulo": "Informe del herbario",
+      "vence": "2026-10-09T23:59:00+02:00",
+      "url": "https://canvas.ucam.edu/courses/101/assignments/1001"
+    },
+    {
+      "materia": "Música",
+      "titulo": "Análisis de una fuga",
+      "vence": "2026-10-13T14:00:00+02:00",
+      "url": null
+    },
+    {
+      "materia": "Astronomía",
+      "titulo": "Práctica de órbitas",
+      "vence": "2026-10-20T23:59:00+02:00",
+      "url": "https://canvas.ucam.edu/courses/102/assignments/2002"
+    }
+  ],
+  "parciales": [
+    { "materia": "Astronomía", "fecha": "2026-10-27", "hora": "9:00-11:00" },
+    { "materia": "Botánica", "fecha": "2026-11-12", "hora": "" }
+  ],
+  "novedades": [
+    {
+      "materia": "Música",
+      "titulo": "Partitura del tema 2.pdf",
+      "fecha": "2026-10-08T10:05:00+02:00",
+      "tipo": "archivo"
+    },
+    {
+      "materia": "Astronomía",
+      "titulo": "Práctica de órbitas",
+      "fecha": "2026-10-06T18:30:00+02:00",
+      "tipo": "tarea"
+    }
+  ],
+  "ejercicios": [
+    {
+      "id": "ast-0001",
+      "materia": "Astronomía",
+      "tema": "Tercera ley de Kepler",
+      "enunciado": "Un planeta gira alrededor de su estrella a $a = 4$ UA.\nCon $T^2 = a^3$ ($T$ en años, $a$ en UA), ¿cuál es su periodo?",
+      "solucion": "Despejando el periodo:\n$$T = a^{3/2} = 4^{3/2} = 8$$\nEl planeta tarda 8 años en dar una vuelta.",
+      "nivel": 1
+    },
+    {
+      "id": "mus-0012",
+      "materia": "Música",
+      "tema": "Frecuencia de las notas",
+      "enunciado": "En la afinación temperada, la tecla $n$ del piano suena a $f_n = 440 \\cdot 2^{(n-49)/12}$ Hz.\nCalcula la frecuencia de la tecla 61.",
+      "solucion": "$$f_{61} = 440 \\cdot 2^{(61-49)/12} = 440 \\cdot 2 = 880 \\text{ Hz}$$\nEs el La una octava más aguda.",
+      "nivel": 2
+    },
+    {
+      "id": "bot-0003",
+      "materia": "Botánica",
+      "tema": "Crecimiento logístico",
+      "enunciado": "Una población de helechos sigue $\\frac{dP}{dt} = rP\\left(1 - \\frac{P}{K}\\right)$ con $r = 0{,}5$ y $K = 1000$.\n¿Con cuántos helechos crece más rápido?",
+      "solucion": "La velocidad $f(P) = rP\\left(1 - \\frac{P}{K}\\right)$ es una parábola en $P$:\n$$f'(P) = r\\left(1 - \\frac{2P}{K}\\right) = 0 \\Rightarrow P = \\frac{K}{2} = 500$$\nCrece más rápido con 500 helechos.",
+      "nivel": 3
+    }
+  ],
+  "banco": [
+    { "materia": "Astronomía", "quedan": 23 },
+    { "materia": "Botánica", "quedan": 11 },
+    { "materia": "Música", "quedan": 3 }
+  ],
+  "proyectos": []
+}

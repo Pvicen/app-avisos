@@ -2,5 +2,6 @@
 exclude:
   - README.md
   - DEUDA_TECNICA.md
+  - docs/
   - setup/
   - _config.yml
