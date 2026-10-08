@@ -4,8 +4,12 @@
 //
 // Convenio: sube el número de CACHE ("avisos-v3", ...) si cambias cualquier
 // URL de ASSETS o CDN_URL (p. ej. al subir la versión fijada de supabase-js).
-const CACHE = "avisos-v5";
+const CACHE = "avisos-v6";
 const CDN_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js";
+// KaTeX (fórmulas del panel) no se precarga: solo lo baja quien tiene panel. Va en su propia
+// caché, con la versión en el nombre, para que sobreviva a las versiones nuevas de la app.
+const KATEX_BASE = "https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/";
+const CACHE_KATEX = "avisos-katex-0.16.47";
 const ASSETS = [
   "./",
   "./index.html",
@@ -39,7 +43,9 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) =>
+        Promise.all(keys.filter((k) => k !== CACHE && k !== CACHE_KATEX).map((k) => caches.delete(k)))
+      )
       .then(async () => {
         // Poda entradas huérfanas dentro de la caché actual
         const c = await caches.open(CACHE);
@@ -68,8 +74,9 @@ self.addEventListener("fetch", (e) => {
           // Las navegaciones (p. ej. "./?texto=..." de un share) se guardan bajo una
           // sola clave para no acumular una entrada por cada query distinta
           const clave = e.request.mode === "navigate" ? "./index.html" : e.request;
+          const destino = url.href.startsWith(KATEX_BASE) ? CACHE_KATEX : CACHE;
           e.waitUntil(
-            caches.open(CACHE).then((c) => c.put(clave, copia)).catch(() => {})
+            caches.open(destino).then((c) => c.put(clave, copia)).catch(() => {})
           );
         }
         return resp;

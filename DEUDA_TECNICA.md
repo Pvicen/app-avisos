@@ -26,6 +26,15 @@ Nada de esto es bloqueante ni pone en riesgo datos o seguridad.
   `novedades` sean de los últimos 7 días: con la hora de por medio, un JSON generado a las 23:59 y
   recibido a las 00:00 se rechazaría. Eso lo garantiza el productor; la vista ya decide qué es hoy.
 
+## Panel personal: la vista (2026-10-08)
+
+- **Color de cada materia por suma de letras.** Con solo cuatro colores, dos materias pueden
+  salir del mismo color (en el ejemplo, Astronomía y Música). Se podría fijar un color por materia.
+- **Fórmulas sin conexión la primera vez.** KaTeX se baja al ver el panel y queda en caché; si
+  la primera apertura es sin red, las fórmulas se ven como texto (`$…$`) hasta que vuelva.
+- **Se relee el panel entero** (hasta 256 KB) cada vez que la app vuelve a primer plano.
+- **«Ver solución» y los días de «Esta semana» se cierran al recargar** (solo se recuerda «Hecho»).
+
 ## Diseño "Cálido" (2026-09-25)
 
 - **Fuente Nunito desde Google Fonts.** Sin conexión y con la caché del navegador vencida,

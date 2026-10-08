@@ -42,7 +42,29 @@ const ui = {
   claveRepetir: $("#clave-repetir"),
   errorClave: $("#error-clave"),
   btnCancelarClave: $("#btn-cancelar-clave"),
+  pestanas: $("#pestanas"),
+  tabAvisos: $("#tab-avisos"),
+  tabPanel: $("#tab-panel"),
+  vistaAvisos: $("#vista-avisos"),
+  vistaPanel: $("#vista-panel"),
+  panelContenido: $("#panel-contenido"),
 };
+
+// Panel personal (Contrato C3 de docs/panel-contrato.md). KaTeX se carga solo si hay panel.
+const KATEX_BASE = "https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/";
+const KATEX_JS_SRI = "sha384-CwjPRVHTvLiMBFjEoij+QZViMV5rhTOIp7CJzl24JEqpRDA1sJFHVXXLURktbYYp";
+const KATEX_CSS_SRI = "sha384-nH0MfJ44wi1dd7w6jinlyBgljjS8EJAh2JBoRad8a3VDw2K69vfaaqm4WnR+gXtA";
+const PREFIJO_CANVAS = "https://canvas.ucam.edu/";
+const CLAVE_COPIA_PANEL = "panel-copia";
+const PREFIJO_HECHO = "panel-hecho:";
+const CLAVE_VISTA = "vista-recordada";
+const HORAS_PANEL_ANTIGUO = 3;
+const MIN_EJERCICIOS_BANCO = 5;
+const DIAS_SEMANA = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
+const MESES_LARGOS = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+];
 
 const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 const DIAS = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
@@ -62,6 +84,15 @@ let personas = new Map();       // correo → { nombre, color }; vacío si la BD
 let miCorreo = null;            // correo de quien usa este dispositivo
 let abiertoId = null;           // aviso con sus opciones desplegadas
 let pendientesVisibles = null;  // para el saludo (null = aún sin cargar)
+let vista = "avisos";           // pestaña visible: "avisos" | "panel"
+let panelActual = null;         // { datos, sinConexion } o null si no hay panel
+let panelVisto = false;         // ya se aplicó la pestaña recordada
+let panelSeq = 0;               // descarta respuestas obsoletas de cargarPanel()
+let canalPanel = null;
+let reintentoPanel = null;
+let panelResincronizar = false; // la próxima suscripción es una reconexión
+let katexPromesa = null;
+const formulas = new WeakMap(); // <span> → { valor, bloque } pendiente de KaTeX
 
 function mostrar(el, visible) {
   el.classList.toggle("oculto", !visible);
@@ -126,6 +157,12 @@ async function init() {
     ui.texto.value = borrador; // queda listo en la barra; se revisa y se pulsa +
   }
 
+  // Prueba local del panel con datos inventados: ni sesión ni Supabase
+  if (modoEjemploPanel()) {
+    entrarEjemploPanel();
+    return;
+  }
+
   const configurado =
     typeof SUPABASE_URL === "string" && SUPABASE_URL.startsWith("https://") &&
     typeof SUPABASE_ANON_KEY === "string" && SUPABASE_ANON_KEY.length > 20;
@@ -151,7 +188,10 @@ async function init() {
   }
 
   sb.auth.onAuthStateChange((evento) => {
-    if (evento === "SIGNED_OUT") location.reload();
+    if (evento === "SIGNED_OUT") {
+      borrarPanelLocal(); // también si la sesión se cerró desde otro sitio
+      location.reload();
+    }
   });
 }
 
@@ -165,6 +205,10 @@ function entrarApp(session) {
   actualizarBotonNotif();
   mostrarAyudaIOS();
   cargarPersonas();
+  // El panel: primero la copia local (si es de esta cuenta), luego lo que diga Supabase
+  const copia = leerCopiaPanel();
+  if (copia) mostrarPanel({ datos: copia, sinConexion: false, actualizando: true });
+  cargarPanel();
   if (ui.texto.value) ui.texto.focus(); // texto compartido esperando confirmación
 }
 
@@ -895,6 +939,712 @@ ui.formClave.addEventListener("submit", async (e) => {
   estado("Contraseña cambiada. Úsala la próxima vez que entres.", "ok");
 });
 
+// ---------- Panel personal ----------
+// Solo lo ve su dueño: la RLS de `panel` no devuelve filas a nadie más, y sin fila no hay pestaña.
+
+const solucionesAbiertas = new Set(); // ids de ejercicios con la solución desplegada
+const diasAbiertos = new Set();       // fechas de «Esta semana» desplegadas
+
+function leerLocal(clave) {
+  try {
+    return localStorage.getItem(clave);
+  } catch {
+    return null;
+  }
+}
+
+function guardarLocal(clave, valor) {
+  try {
+    localStorage.setItem(clave, valor);
+  } catch {
+    // sin almacenamiento: el panel funciona igual, sin recordar
+  }
+}
+
+function borrarLocal(clave) {
+  try {
+    localStorage.removeItem(clave);
+  } catch {
+    // ídem
+  }
+}
+
+/** Al cerrar sesión: fuera la copia del panel y todos los «Hecho». */
+function borrarPanelLocal() {
+  borrarLocal(CLAVE_COPIA_PANEL);
+  try {
+    const claves = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const clave = localStorage.key(i);
+      if (clave && clave.startsWith(PREFIJO_HECHO)) claves.push(clave);
+    }
+    for (const clave of claves) localStorage.removeItem(clave);
+  } catch {
+    // sin almacenamiento: no hay nada que borrar
+  }
+}
+
+/** La última copia del panel, solo si es de la cuenta abierta (el dispositivo puede ser compartido). */
+function leerCopiaPanel() {
+  try {
+    const copia = JSON.parse(leerLocal(CLAVE_COPIA_PANEL) || "null");
+    return copia && miCorreo && copia.correo === miCorreo && copia.datos ? copia.datos : null;
+  } catch {
+    return null;
+  }
+}
+
+function guardarCopiaPanel(datos) {
+  if (miCorreo) guardarLocal(CLAVE_COPIA_PANEL, JSON.stringify({ correo: miCorreo, datos }));
+}
+
+// Prueba local: ?panel=ejemplo SOLO en localhost carga setup/panel-ejemplo.json (no se publica en Pages)
+function modoEjemploPanel() {
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+  return local && new URLSearchParams(location.search).get("panel") === "ejemplo";
+}
+
+function entrarEjemploPanel() {
+  mostrar(ui.login, false);
+  mostrar(ui.app, true);
+  for (const elemento of [ui.btnNotif, ui.btnHistorial, ui.btnCuenta, ui.formNuevo]) mostrar(elemento, false);
+  ui.saludo.textContent = "Modo de prueba · datos inventados";
+  ui.vacio.querySelector(".vacio-titulo").textContent = "Los avisos necesitan sesión";
+  ui.vacio.querySelector(".vacio-texto").textContent = "En el modo de prueba solo se ve el panel.";
+  mostrar(ui.vacio, true);
+  mostrar(ui.pestanas, true);
+  cambiarVista("panel", false);
+  pintarPanelCargando();
+  cargarPanel();
+}
+
+function aFechaISO(d) {
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" +
+    String(d.getDate()).padStart(2, "0");
+}
+
+function fechaLocal(texto) {
+  const [a, m, d] = String(texto).split("-").map(Number);
+  return new Date(a, m - 1, d);
+}
+
+/** El ejemplo tiene fechas fijas: se corren para que su primer día sea hoy y nada salga vencido. */
+function acercarEjemploAHoy(original) {
+  const d = JSON.parse(JSON.stringify(original));
+  const primero = d.dias && d.dias[0] ? fechaLocal(d.dias[0].fecha) : hoyLocal();
+  const delta = Math.round((hoyLocal() - primero) / 86400000);
+  const moverDia = (f) => {
+    const x = fechaLocal(f);
+    x.setDate(x.getDate() + delta);
+    return aFechaISO(x);
+  };
+  const moverInstante = (iso) => new Date(Date.parse(iso) + delta * 86400000).toISOString();
+  for (const x of d.dias || []) x.fecha = moverDia(x.fecha);
+  for (const x of d.parciales || []) x.fecha = moverDia(x.fecha);
+  for (const x of d.proyectos || []) x.fecha = moverDia(x.fecha);
+  for (const x of d.entregas || []) x.vence = moverInstante(x.vence);
+  for (const x of d.novedades || []) x.fecha = moverInstante(x.fecha);
+  // ?horas=N simula que el portátil lleva N horas sin mandar datos
+  const horas = Number(new URLSearchParams(location.search).get("horas"));
+  d.generado = new Date(Date.now() - (horas > 0 ? horas * 3600000 : 25 * 60000)).toISOString();
+  return d;
+}
+
+async function cargarPanel() {
+  const seq = ++panelSeq;
+  if (modoEjemploPanel()) {
+    try {
+      const r = await fetch("setup/panel-ejemplo.json", { cache: "no-store" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const datos = acercarEjemploAHoy(await r.json());
+      if (seq === panelSeq) mostrarPanel({ datos, sinConexion: false });
+    } catch (err) {
+      if (seq === panelSeq) pintarPanelError("No se pudo leer setup/panel-ejemplo.json (" + err.message + ").");
+    }
+    return;
+  }
+  if (!sb) return;
+  const { data, error } = await sb.from("panel").select("datos").maybeSingle();
+  if (seq !== panelSeq) return;
+  if (error) {
+    // Sin red (o la API caída): se enseña la última copia, marcada
+    const copia = leerCopiaPanel();
+    if (copia) mostrarPanel({ datos: copia, sinConexion: true });
+    return;
+  }
+  if (!data) {
+    quitarPanel();
+    return;
+  }
+  guardarCopiaPanel(data.datos);
+  mostrarPanel({ datos: data.datos, sinConexion: false });
+  suscribirPanel();
+}
+
+function mostrarPanel(estado) {
+  panelActual = estado;
+  mostrar(ui.pestanas, true);
+  if (!panelVisto) {
+    panelVisto = true;
+    if (leerLocal(CLAVE_VISTA) === "panel") cambiarVista("panel", false);
+  }
+  pintarPanel();
+}
+
+function quitarPanel() {
+  panelActual = null;
+  mostrar(ui.pestanas, false);
+  if (vista === "panel") cambiarVista("avisos", false);
+  ui.panelContenido.textContent = "";
+  borrarLocal(CLAVE_COPIA_PANEL);
+  if (canalPanel && sb) {
+    const c = canalPanel;
+    canalPanel = null;
+    sb.removeChannel(c);
+  }
+}
+
+function cambiarVista(nueva, recordar = true) {
+  if (nueva === "panel" && !panelActual && !modoEjemploPanel()) nueva = "avisos";
+  vista = nueva;
+  const enPanel = nueva === "panel";
+  ui.tabAvisos.setAttribute("aria-selected", String(!enPanel));
+  ui.tabPanel.setAttribute("aria-selected", String(enPanel));
+  ui.tabAvisos.tabIndex = enPanel ? -1 : 0;
+  ui.tabPanel.tabIndex = enPanel ? 0 : -1;
+  mostrar(ui.vistaAvisos, !enPanel);
+  mostrar(ui.vistaPanel, enPanel);
+  ui.app.classList.toggle("viendo-panel", enPanel);
+  if (recordar) guardarLocal(CLAVE_VISTA, nueva);
+}
+
+function suscribirPanel() {
+  if (canalPanel || !sb || !miCorreo) return;
+  clearTimeout(reintentoPanel);
+  const c = sb
+    .channel("panel-cambios")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "panel", filter: "dueno=eq." + miCorreo },
+      () => cargarPanel()
+    )
+    .subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        if (panelResincronizar) cargarPanel(); // tras una reconexión, ponerse al día
+        panelResincronizar = true;
+      } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+        if (canalPanel !== c) return; // aviso tardío de un canal ya quitado
+        sb.removeChannel(c);
+        canalPanel = null;
+        clearTimeout(reintentoPanel);
+        reintentoPanel = setTimeout(suscribirPanel, 5000);
+      }
+    });
+  canalPanel = c;
+}
+
+// --- Pintado (siempre nodos de texto: nada del JSON pasa por innerHTML) ---
+
+function el(etiqueta, clase, texto) {
+  const e = document.createElement(etiqueta);
+  if (clase) e.className = clase;
+  if (texto !== undefined && texto !== null) e.textContent = texto;
+  return e;
+}
+
+const comoLista = (x) => (Array.isArray(x) ? x : []);
+const comoTexto = (x) => (typeof x === "string" ? x : "");
+const capitalizar = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+function colorMateria(materia) {
+  let h = 0;
+  for (const c of comoTexto(materia)) h = (h * 31 + c.codePointAt(0)) >>> 0;
+  return "p" + (h % COLORES_PERSONA);
+}
+
+function chipMateria(materia) {
+  return el("span", "chip-materia " + colorMateria(materia), comoTexto(materia));
+}
+
+function tarjetaPanel(id, nombreIcono, titulo, subtitulo) {
+  const s = el("section", "tarjeta-panel");
+  s.setAttribute("aria-labelledby", "panel-" + id);
+  const cabeza = el("div", "tarjeta-cabeza");
+  const h = el("h2", "tarjeta-titulo");
+  h.id = "panel-" + id;
+  h.append(icono(nombreIcono), document.createTextNode(titulo));
+  cabeza.append(h);
+  if (subtitulo) cabeza.append(el("span", "tarjeta-sub", subtitulo));
+  s.append(cabeza);
+  return s;
+}
+
+function vacioPanel(texto) {
+  return el("p", "panel-vacio", texto);
+}
+
+function avisoPanel(nombreIcono, texto) {
+  const p = el("p", "aviso-panel");
+  p.setAttribute("role", "status");
+  p.append(icono(nombreIcono), document.createTextNode(texto));
+  return p;
+}
+
+function diasHasta(fecha) {
+  const d = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
+  return Math.round((d - hoyLocal()) / 86400000);
+}
+
+function fechaLarga(d) {
+  return DIAS_SEMANA[d.getDay()] + " " + d.getDate() + " de " + MESES_LARGOS[d.getMonth()];
+}
+
+function horaCorta(d) {
+  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}
+
+function haceCuanto(ms) {
+  const min = Math.max(0, Math.round((Date.now() - ms) / 60000));
+  if (min < 1) return "hace un momento";
+  if (min < 60) return `hace ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `hace ${h} h`;
+  const d = Math.round(h / 24);
+  return d === 1 ? "hace 1 día" : `hace ${d} días`;
+}
+
+// Fórmulas: el texto se parte en trozos normales ($…$ en línea, $$…$$ en bloque, \$ es un dólar)
+function trozosConFormulas(texto) {
+  const trozos = [];
+  let normal = "";
+  let i = 0;
+  const cerrarNormal = () => {
+    if (normal) trozos.push({ formula: false, valor: normal });
+    normal = "";
+  };
+  while (i < texto.length) {
+    if (texto[i] === "\\" && texto[i + 1] === "$") {
+      normal += "$";
+      i += 2;
+      continue;
+    }
+    if (texto[i] === "$") {
+      const bloque = texto[i + 1] === "$";
+      const abre = bloque ? 2 : 1;
+      const fin = buscarCierre(texto, i + abre, bloque);
+      if (fin > i + abre) {
+        cerrarNormal();
+        trozos.push({ formula: true, bloque, valor: texto.slice(i + abre, fin) });
+        i = fin + abre;
+        continue;
+      }
+    }
+    normal += texto[i];
+    i++;
+  }
+  cerrarNormal();
+  // Una fórmula en bloque ya va en su propia línea: el salto de línea que la rodea sobra
+  trozos.forEach((t, k) => {
+    if (t.formula) return;
+    if (trozos[k + 1]?.bloque) t.valor = t.valor.replace(/\r?\n$/, "");
+    if (trozos[k - 1]?.bloque) t.valor = t.valor.replace(/^\r?\n/, "");
+  });
+  return trozos.filter((t) => t.formula || t.valor);
+}
+
+function buscarCierre(texto, desde, bloque) {
+  for (let j = desde; j < texto.length; j++) {
+    if (texto[j] === "\\") {
+      j++; // \$ y demás escapes dentro de la fórmula no cierran
+      continue;
+    }
+    if (texto[j] === "$" && (!bloque || texto[j + 1] === "$")) return j;
+  }
+  return -1;
+}
+
+function pintarConFormulas(contenedor, texto) {
+  for (const t of trozosConFormulas(comoTexto(texto))) {
+    if (!t.formula) {
+      contenedor.append(document.createTextNode(t.valor));
+      continue;
+    }
+    // Mientras KaTeX no carga (o si no carga), se ve la fórmula tal cual
+    const span = el("span", t.bloque ? "formula formula-bloque" : "formula",
+      t.bloque ? "$$" + t.valor + "$$" : "$" + t.valor + "$");
+    formulas.set(span, t);
+    contenedor.append(span);
+  }
+}
+
+function pintarFormulas(raiz) {
+  if (!window.katex) return;
+  for (const span of raiz.querySelectorAll("span.formula")) {
+    const t = formulas.get(span);
+    if (!t) continue;
+    formulas.delete(span);
+    try {
+      window.katex.render(t.valor, span, {
+        throwOnError: false,
+        trust: false,
+        displayMode: t.bloque,
+        strict: "ignore",
+      });
+    } catch {
+      // se queda la fórmula como texto
+    }
+  }
+}
+
+function cargarKatex() {
+  if (window.katex) return Promise.resolve(true);
+  if (katexPromesa) return katexPromesa;
+  katexPromesa = new Promise((resolver) => {
+    if (!document.querySelector("link[data-katex]")) {
+      const css = document.createElement("link");
+      css.rel = "stylesheet";
+      css.href = KATEX_BASE + "katex.min.css";
+      css.integrity = KATEX_CSS_SRI;
+      css.crossOrigin = "anonymous";
+      css.dataset.katex = "1";
+      document.head.append(css);
+    }
+    const js = document.createElement("script");
+    js.src = KATEX_BASE + "katex.min.js";
+    js.integrity = KATEX_JS_SRI;
+    js.crossOrigin = "anonymous";
+    js.onload = () => resolver(Boolean(window.katex));
+    js.onerror = () => {
+      js.remove();
+      katexPromesa = null; // se reintenta la próxima vez
+      resolver(false);
+    };
+    document.head.append(js);
+  });
+  return katexPromesa;
+}
+
+function pintarPanelCargando() {
+  const caja = el("div", "panel-cargando");
+  caja.setAttribute("aria-busy", "true");
+  caja.setAttribute("aria-label", "Cargando el panel");
+  for (let i = 0; i < 3; i++) caja.append(el("div", "esqueleto"));
+  ui.panelContenido.replaceChildren(caja);
+}
+
+function pintarPanelError(texto) {
+  ui.panelContenido.replaceChildren(avisoPanel("alerta", texto));
+}
+
+function pintarPanel() {
+  if (!panelActual) return;
+  const { datos, sinConexion, actualizando } = panelActual;
+  const raiz = ui.panelContenido;
+  raiz.textContent = "";
+  if (sinConexion) raiz.append(avisoPanel("sin-red", "Sin conexión: es la última copia guardada."));
+  const dias = comoLista(datos.dias);
+  raiz.append(
+    seccionHoy(dias[0]),
+    seccionEjercicios(comoLista(datos.ejercicios)),
+    seccionPlazos(comoLista(datos.entregas), comoLista(datos.parciales))
+  );
+  if (dias.length > 1) raiz.append(seccionSemana(dias.slice(1)));
+  raiz.append(seccionNovedades(comoLista(datos.novedades)));
+  if (comoLista(datos.proyectos).length > 0) raiz.append(seccionProyectos(comoLista(datos.proyectos)));
+  raiz.append(piePanel(datos, sinConexion, actualizando));
+  cargarKatex().then((ok) => {
+    if (ok) pintarFormulas(raiz);
+  });
+}
+
+function contenidoDia(dia, sinClases) {
+  const caja = el("div", "dia-contenido");
+  const clases = el("p", "panel-clases" + (comoTexto(dia.clases) ? "" : " apagado"));
+  clases.append(icono("reloj"), document.createTextNode(comoTexto(dia.clases) || sinClases));
+  caja.append(clases);
+  const bloques = comoLista(dia.estudio);
+  if (bloques.length === 0) {
+    caja.append(vacioPanel("Sin bloques de estudio."));
+    return caja;
+  }
+  const ul = el("ul", "bloques");
+  ul.setAttribute("aria-label", "Bloques de estudio");
+  for (const b of bloques) {
+    const li = el("li", "bloque");
+    const cabeza = el("div", "bloque-cabeza");
+    cabeza.append(chipMateria(b.materia));
+    if (comoTexto(b.duracion)) cabeza.append(el("span", "bloque-duracion", comoTexto(b.duracion)));
+    li.append(cabeza, el("p", "bloque-texto", comoTexto(b.texto)));
+    ul.append(li);
+  }
+  caja.append(ul);
+  return caja;
+}
+
+function seccionHoy(dia) {
+  const fecha = dia ? fechaLocal(dia.fecha) : hoyLocal();
+  const s = tarjetaPanel("hoy", "hoy", "Hoy", capitalizar(fechaLarga(fecha)));
+  if (!dia) s.append(vacioPanel("Sin datos de hoy."));
+  else s.append(contenidoDia(dia, "Sin clases hoy."));
+  return s;
+}
+
+function estaHecho(id) {
+  return leerLocal(PREFIJO_HECHO + id) === "1";
+}
+
+function textoHechos(seccion) {
+  const total = seccion.querySelectorAll(".ejercicio").length;
+  const hechos = seccion.querySelectorAll(".ejercicio.hecho").length;
+  return `${hechos} de ${total} hechos`;
+}
+
+function seccionEjercicios(ejercicios) {
+  const s = tarjetaPanel("ejercicios", "editar", "Ejercicios de hoy", ejercicios.length ? " " : "");
+  if (ejercicios.length === 0) {
+    s.append(vacioPanel("Hoy no tocan ejercicios."));
+    return s;
+  }
+  const ol = el("ol", "ejercicios");
+  ejercicios.forEach((x, i) => ol.append(ejercicio(x, i, s)));
+  s.append(ol);
+  s.querySelector(".tarjeta-sub").textContent = textoHechos(s);
+  return s;
+}
+
+function ejercicio(x, i, seccion) {
+  const id = comoTexto(x.id);
+  const li = el("li", "ejercicio");
+  const cabeza = el("div", "ejercicio-cabeza");
+  const nivel = Number(x.nivel);
+  const etiquetaNivel = el("span", "nivel nivel-" + nivel, "Nivel " + nivel);
+  etiquetaNivel.setAttribute("aria-label", `Nivel ${nivel} de 3`);
+  cabeza.append(chipMateria(x.materia), etiquetaNivel);
+  li.append(cabeza, el("h3", "ejercicio-tema", comoTexto(x.tema)));
+
+  const enunciado = el("div", "texto-formulas");
+  pintarConFormulas(enunciado, x.enunciado);
+  li.append(enunciado);
+
+  const solucion = el("div", "texto-formulas solucion");
+  solucion.id = "solucion-" + i;
+  solucion.hidden = !solucionesAbiertas.has(id);
+  const cuerpoSolucion = el("div");
+  pintarConFormulas(cuerpoSolucion, x.solucion);
+  solucion.append(el("p", "solucion-titulo", "Solución"), cuerpoSolucion);
+
+  const acciones = el("div", "ejercicio-acciones");
+  const ver = el("button", "boton-panel");
+  ver.type = "button";
+  ver.setAttribute("aria-controls", solucion.id);
+  const pintarVer = () => {
+    ver.setAttribute("aria-expanded", String(!solucion.hidden));
+    ver.replaceChildren(icono("ojo"), document.createTextNode(solucion.hidden ? "Ver solución" : "Ocultar solución"));
+  };
+  ver.addEventListener("click", () => {
+    solucion.hidden = !solucion.hidden;
+    if (solucion.hidden) solucionesAbiertas.delete(id);
+    else solucionesAbiertas.add(id);
+    pintarVer();
+  });
+  pintarVer();
+
+  const hecho = el("button", "boton-panel boton-hecho");
+  hecho.type = "button";
+  const pintarHecho = () => {
+    const si = estaHecho(id);
+    hecho.setAttribute("aria-pressed", String(si));
+    hecho.replaceChildren(icono("check"), document.createTextNode("Hecho"));
+    li.classList.toggle("hecho", si);
+  };
+  hecho.addEventListener("click", () => {
+    if (estaHecho(id)) borrarLocal(PREFIJO_HECHO + id);
+    else guardarLocal(PREFIJO_HECHO + id, "1");
+    pintarHecho();
+    seccion.querySelector(".tarjeta-sub").textContent = textoHechos(seccion);
+  });
+  pintarHecho();
+
+  acciones.append(ver, hecho);
+  li.append(acciones, solucion);
+  return li;
+}
+
+function claseUrgencia(dias) {
+  if (dias <= 2) return "urgente";
+  if (dias <= 7) return "pronto";
+  return "normal";
+}
+
+function textoPlazo(dias) {
+  if (dias === 0) return "hoy";
+  if (dias === 1) return "mañana";
+  return `faltan ${dias} días`;
+}
+
+function seccionPlazos(entregas, parciales) {
+  const ahora = Date.now();
+  const items = [];
+  for (const e of entregas) {
+    const t = Date.parse(e.vence);
+    if (Number.isNaN(t) || t < ahora) continue; // lo vencido no se muestra
+    items.push({ tipo: "entrega", cuando: new Date(t), dato: e });
+  }
+  for (const p of parciales) {
+    const f = fechaLocal(p.fecha);
+    if (Number.isNaN(f.getTime()) || diasHasta(f) < 0) continue;
+    items.push({ tipo: "parcial", cuando: f, dato: p });
+  }
+  items.sort((a, b) => a.cuando - b.cuando);
+
+  const s = tarjetaPanel("plazos", "calendario", "Entregas y parciales", items.length ? String(items.length) : "");
+  if (items.length === 0) {
+    s.append(vacioPanel("Nada pendiente a la vista."));
+    return s;
+  }
+  const ul = el("ul", "plazos");
+  for (const item of items) ul.append(plazo(item));
+  s.append(ul);
+  return s;
+}
+
+function plazo({ tipo, cuando, dato }) {
+  const dias = diasHasta(cuando);
+  const li = el("li", "plazo " + claseUrgencia(dias));
+  const fecha = el("div", "plazo-fecha");
+  fecha.setAttribute("aria-hidden", "true");
+  fecha.append(el("span", "plazo-dia", String(cuando.getDate())), el("span", "plazo-mes", MESES[cuando.getMonth()]));
+
+  const cuerpo = el("div", "plazo-cuerpo");
+  cuerpo.append(el("span", "solo-lector", capitalizar(fechaLarga(cuando)) + ". "));
+  const meta = el("p", "plazo-meta");
+  const pie = el("div", "plazo-pie");
+  pie.append(el("span", "plazo-cuanto", textoPlazo(dias)));
+  if (tipo === "entrega") {
+    cuerpo.append(el("p", "plazo-titulo", comoTexto(dato.titulo)));
+    meta.append(chipMateria(dato.materia), document.createTextNode("Entrega · " + horaCorta(cuando)));
+    const url = dato.url;
+    if (typeof url === "string" && url.startsWith(PREFIJO_CANVAS)) {
+      const a = el("a", "plazo-enlace");
+      a.href = url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.setAttribute("aria-label", "Abrir en Canvas: " + comoTexto(dato.titulo));
+      a.append(document.createTextNode("Abrir en Canvas"), icono("enlace"));
+      pie.append(a);
+    }
+  } else {
+    cuerpo.append(el("p", "plazo-titulo", "Parcial"));
+    meta.append(chipMateria(dato.materia),
+      document.createTextNode(comoTexto(dato.hora) ? "Examen · " + comoTexto(dato.hora) : "Examen"));
+  }
+  cuerpo.append(meta, pie);
+  li.append(fecha, cuerpo);
+  return li;
+}
+
+function seccionSemana(dias) {
+  const s = tarjetaPanel("semana", "calendario", "Esta semana", "");
+  for (const dia of dias) {
+    const clave = comoTexto(dia.fecha);
+    const detalle = el("details", "dia");
+    detalle.open = diasAbiertos.has(clave);
+    detalle.addEventListener("toggle", () => {
+      if (detalle.open) diasAbiertos.add(clave);
+      else diasAbiertos.delete(clave);
+    });
+    const n = comoLista(dia.estudio).length;
+    const meta = n === 0 ? (comoTexto(dia.clases) ? "solo clases" : "día libre") : n === 1 ? "1 bloque" : `${n} bloques`;
+    const resumen = el("summary", "dia-resumen");
+    resumen.append(el("span", "dia-nombre", capitalizar(fechaLarga(fechaLocal(clave)))), el("span", "dia-meta", meta),
+      icono("abajo"));
+    detalle.append(resumen, contenidoDia(dia, "Sin clases."));
+    s.append(detalle);
+  }
+  return s;
+}
+
+function cuandoNovedad(ms) {
+  if (Number.isNaN(ms)) return "";
+  const d = new Date(ms);
+  const dias = diasHasta(d);
+  if (dias === 0) return "hoy, " + horaCorta(d);
+  if (dias === -1) return "ayer, " + horaCorta(d);
+  return haceCuanto(ms);
+}
+
+function seccionNovedades(novedades) {
+  const s = tarjetaPanel("novedades", "bandeja", "Novedades de Canvas", novedades.length ? String(novedades.length) : "");
+  if (novedades.length === 0) {
+    s.append(vacioPanel("Sin novedades esta semana."));
+    return s;
+  }
+  const ul = el("ul", "novedades");
+  for (const n of novedades) {
+    const esTarea = n.tipo === "tarea";
+    const li = el("li", "novedad");
+    const marca = el("span", "novedad-icono");
+    marca.append(icono(esTarea ? "tarea" : "archivo"));
+    const cuerpo = el("div", "novedad-cuerpo");
+    const meta = el("p", "plazo-meta");
+    meta.append(chipMateria(n.materia),
+      document.createTextNode((esTarea ? "Tarea" : "Archivo") + " · " + cuandoNovedad(Date.parse(n.fecha))));
+    cuerpo.append(el("p", "novedad-titulo", comoTexto(n.titulo)), meta);
+    li.append(marca, cuerpo);
+    ul.append(li);
+  }
+  s.append(ul);
+  return s;
+}
+
+function seccionProyectos(proyectos) {
+  const s = tarjetaPanel("proyectos", "carpeta", "Proyectos", String(proyectos.length));
+  const ul = el("ul", "proyectos");
+  for (const p of proyectos) {
+    const li = el("li", "proyecto");
+    li.append(el("p", "proyecto-nombre", comoTexto(p.nombre)));
+    if (comoTexto(p.estado)) li.append(el("p", "proyecto-estado", comoTexto(p.estado)));
+    if (comoTexto(p.siguiente)) li.append(el("p", "proyecto-siguiente", "Siguiente: " + comoTexto(p.siguiente)));
+    ul.append(li);
+  }
+  s.append(ul);
+  return s;
+}
+
+function piePanel(datos, sinConexion, actualizando) {
+  const pie = el("footer", "pie-panel");
+  const generado = Date.parse(datos.generado);
+  const linea = el("p", "pie-linea");
+  linea.append(icono(sinConexion ? "sin-red" : "reloj"), document.createTextNode(
+    (Number.isNaN(generado) ? "Sin fecha de actualización" : "Actualizado " + haceCuanto(generado)) +
+    (actualizando ? " · comprobando…" : "")
+  ));
+  pie.append(linea);
+  if (!Number.isNaN(generado) && Date.now() - generado > HORAS_PANEL_ANTIGUO * 3600000) {
+    const d = new Date(generado);
+    pie.append(avisoPanel("alerta",
+      `Tu portátil no manda datos desde el ${DIAS_SEMANA[d.getDay()]} ${d.getDate()} a las ${horaCorta(d)}.`));
+  }
+  for (const b of comoLista(datos.banco)) {
+    if (Number.isInteger(b.quedan) && b.quedan < MIN_EJERCICIOS_BANCO) {
+      pie.append(avisoPanel("libro", `Quedan pocos ejercicios de ${comoTexto(b.materia)} (${b.quedan}).`));
+    }
+  }
+  return pie;
+}
+
+ui.tabAvisos.addEventListener("click", () => cambiarVista("avisos"));
+ui.tabPanel.addEventListener("click", () => cambiarVista("panel"));
+// Pestañas accesibles: flechas, Inicio y Fin
+ui.pestanas.addEventListener("keydown", (e) => {
+  const destino = { ArrowLeft: null, ArrowRight: null, Home: "avisos", End: "panel" };
+  if (!(e.key in destino)) return;
+  e.preventDefault();
+  const nueva = destino[e.key] || (vista === "avisos" ? "panel" : "avisos");
+  cambiarVista(nueva);
+  (nueva === "panel" ? ui.tabPanel : ui.tabAvisos).focus();
+});
+
 // ---------- Eventos de la interfaz ----------
 
 ui.formLogin.addEventListener("submit", async (e) => {
@@ -1005,6 +1755,7 @@ ui.btnVaciar.addEventListener("click", async () => {
 
 ui.btnSalir.addEventListener("click", async () => {
   cerrarHoja(ui.dlgCuenta);
+  borrarPanelLocal(); // la copia del panel y los «Hecho» no se quedan en el dispositivo
   // Apagar las notificaciones de este dispositivo mientras aún hay sesión (RLS)
   if (soportaPush()) {
     try {
@@ -1041,13 +1792,26 @@ if (window.visualViewport) {
 function refrescar() {
   if (sb && vistaActual()) refrescarVista();
 }
+// El panel pesa más: se relee al volver a la app o a internet, no cada 2 min (para eso está realtime)
+function refrescarPanel() {
+  if (sb && vistaActual() === "app") cargarPanel();
+}
 window.addEventListener("focus", refrescar);
-window.addEventListener("online", refrescar);
+window.addEventListener("online", () => {
+  refrescar();
+  refrescarPanel();
+});
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") refrescar();
+  if (document.visibilityState === "visible") {
+    refrescar();
+    refrescarPanel();
+  }
 });
 window.addEventListener("pageshow", (e) => {
-  if (e.persisted) refrescar();
+  if (e.persisted) {
+    refrescar();
+    refrescarPanel();
+  }
 });
 setInterval(() => {
   if (document.visibilityState === "visible") refrescar();

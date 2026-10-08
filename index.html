@@ -34,6 +34,19 @@
     <symbol id="i-llave" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="M11 12l8.5-8.5M17 6l2.5 2.5M14.5 8.5l2 2"/></symbol>
     <symbol id="i-salir" viewBox="0 0 24 24"><path d="M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2"/><path d="M10 12h10.5M17.5 9l3 3-3 3"/></symbol>
     <symbol id="i-compartir-ios" viewBox="0 0 24 24"><path d="M12 15V3.5M8 7.5l4-4 4 4"/><path d="M7.5 10.5h-1a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-6.5a2 2 0 0 0-2-2h-1"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="4" rx="1.5"/><rect x="13" y="10" width="7" height="10" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-hoy" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6L6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"/></symbol>
+    <symbol id="i-libro" viewBox="0 0 24 24"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v14H6.5A1.5 1.5 0 0 0 5 18.5z"/><path d="M5 18.5A1.5 1.5 0 0 0 6.5 20H19v-3"/></symbol>
+    <symbol id="i-reloj" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-bandeja" viewBox="0 0 24 24"><path d="M4 13h4l1.5 3h5L16 13h4"/><path d="M5.5 13L7.5 5h9l2 8v6h-13z"/></symbol>
+    <symbol id="i-archivo" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></symbol>
+    <symbol id="i-tarea" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1"/><path d="M9 13l2 2 4-4"/></symbol>
+    <symbol id="i-enlace" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></symbol>
+    <symbol id="i-carpeta" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-alerta" viewBox="0 0 24 24"><path d="M12 4L2.5 20h19z"/><path d="M12 10v4M12 17v.5"/></symbol>
+    <symbol id="i-sin-red" viewBox="0 0 24 24"><path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.2 9.3 4.5 4.5 0 0 0 7 18z"/><path d="M3.5 3.5l17 17"/></symbol>
+    <symbol id="i-ojo" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-abajo" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
   </svg>
 
   <div id="aviso-config" class="oculto">
@@ -71,6 +84,16 @@
       </div>
     </header>
 
+    <div id="pestanas" class="pestanas oculto" role="tablist" aria-label="Secciones de la app">
+      <button id="tab-avisos" class="pestana" type="button" role="tab" aria-selected="true" aria-controls="vista-avisos">
+        <svg class="ic" aria-hidden="true"><use href="#i-check"></use></svg>Avisos
+      </button>
+      <button id="tab-panel" class="pestana" type="button" role="tab" aria-selected="false" aria-controls="vista-panel" tabindex="-1">
+        <svg class="ic" aria-hidden="true"><use href="#i-panel"></use></svg>Panel
+      </button>
+    </div>
+
+    <div id="vista-avisos" role="tabpanel" aria-labelledby="tab-avisos">
     <div id="ayuda-ios" class="ayuda oculto">
       <p>Instálala en tu iPhone: toca <svg class="ic ic-linea" aria-hidden="true"><use href="#i-compartir-ios"></use></svg> <b>Compartir</b> y luego <b>«Agregar a inicio»</b>. Así se abre como app y puede enviarte notificaciones.</p>
       <button id="btn-ayuda-ios" class="icono chico" type="button" aria-label="Cerrar ayuda">
@@ -96,6 +119,11 @@
         </button>
       </div>
     </form>
+    </div>
+
+    <div id="vista-panel" class="oculto" role="tabpanel" aria-labelledby="tab-panel">
+      <div id="panel-contenido"></div>
+    </div>
   </section>
 
   <section id="pantalla-historial" class="oculto">
