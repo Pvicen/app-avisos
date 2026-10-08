@@ -86,6 +86,7 @@ Antes de programar, cada Caja se clasifica. **Ante la duda, es crítica.**
 | BD | `setup/supabase.sql` y `setup/migraciones/` (en orden) | Cabecera «Contrato de datos» de `setup/migraciones/2026-09-25-app-compartida.sql` |
 | Notificaciones | `supabase/functions/notificar/index.ts` | Lee `avisos` y `push_suscripciones` con la service role |
 | Configuración | `config.js` | Solo claves públicas: URL, clave anon y llave VAPID pública |
+| Panel | `supabase/functions/panel-subir/`, la tabla `panel` y su vista en `app.js` | Contratos C1, C2 y C3 de `docs/panel-contrato.md` |
 
 Fuera de este repo, y sin romperlos: el widget de Android (repo `Pvicen/avisos-widget`, que lee
 `avisos` con `creado_por` y `personas`) y la app instalada en iPhone.
@@ -122,18 +123,21 @@ en lote.
   otra persona.
 - `DEUDA_TECNICA.md` — errores no críticos anotados.
 - `setup/migraciones/2026-09-25-app-compartida.sql` — el Contrato de datos vigente y la RLS.
+- `docs/panel-contrato.md` — el Contrato del panel personal (JSON, tabla, función y vista).
+- `setup/pruebas/` — las pruebas `node --test` y las comprobaciones de RLS del panel.
 - `_config.yml` — lo que NO se publica en Pages (aquí va todo lo que no es la app).
 
 ## Ejecutar y verificar
 
 Vista previa local: configuración `avisos` de `C:\Dev\.claude\launch.json` (puerto 8123,
 http://localhost:8123/). Sin sesión solo se ve la entrada; para mirar la lista se pintan datos
-inventados desde la consola, sin tocar Supabase.
+inventados desde la consola, sin tocar Supabase. El panel se prueba con `?panel=ejemplo`, que
+solo funciona en localhost y lee `setup/panel-ejemplo.json`.
 
-No hay tests automáticos. Gate mínimo antes de commitear:
+Las pruebas automáticas son las del panel (`setup/pruebas/`). Gate mínimo antes de commitear:
 
 ```powershell
-node --check app.js; node --check sw.js
+node --check app.js; node --check sw.js; node --test
 ```
 
 y abrir la vista previa sin errores en la consola. Lo que toque la lista se prueba a 360 px y en

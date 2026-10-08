@@ -128,3 +128,60 @@ La llave pública VAPID va en `config.js`; la privada solo vive en los secretos 
 Con la app instalada, al **Compartir** texto desde cualquier app puedes elegir **Avisos**:
 el texto queda listo en la barra de escribir para revisarlo y agregarlo con **+**. Si "Avisos" no
 aparece en el menú de compartir, quita el ícono de la pantalla de inicio y vuelve a instalarla.
+
+## Panel personal (solo para su dueño)
+
+Una pestaña **Panel**, al lado de Avisos, con lo de cada día: las clases y los bloques de estudio
+de hoy, los ejercicios del día (con su solución y un «Hecho»), las entregas y los parciales con los
+días que faltan, el resto de la semana, las novedades de Canvas y, más adelante, los proyectos.
+
+- **Solo lo ve su dueño.** A las demás personas de la app no les aparece la pestaña, y la base no
+  les devuelve nada: ni en la app, ni por la API, ni en tiempo real.
+- **Lo llena el portátil del dueño**, con un programa que vive fuera de este repo y manda un JSON a
+  la Edge Function `panel-subir` después de cada descarga. El formato exacto (Contrato C1), la
+  tabla, la función y la vista están en [`docs/panel-contrato.md`](docs/panel-contrato.md).
+- **La app nunca escribe en el panel.** La tabla `panel` solo tiene una política de lectura y la
+  app no tiene permiso de escritura; la llena la función con la service role.
+- **Sin conexión** se ve la última copia guardada en el dispositivo, marcada como tal. Al cerrar
+  sesión se borra, junto con los «Hecho».
+
+### Configuración (una vez)
+
+1. **Tabla.** En el SQL Editor, ejecuta
+   [`setup/migraciones/2026-10-08-panel.sql`](setup/migraciones/2026-10-08-panel.sql) y después el
+   bloque de [`setup/pruebas/panel-rls.md`](setup/pruebas/panel-rls.md): todo tiene que salir
+   `PASA`. Si la API dice que no encuentra la tabla, ejecuta `notify pgrst, 'reload schema';`.
+2. **Clave del portátil.** En el portátil, en PowerShell (la clave no pasa por ningún chat: se
+   guarda en tu usuario de Windows y se copia al portapapeles):
+
+   ```powershell
+   $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); $clave = -join ($b | ForEach-Object { $_.ToString("x2") }); [Environment]::SetEnvironmentVariable("PANEL_CLAVE", $clave, "User"); $env:PANEL_CLAVE = $clave; Set-Clipboard $clave
+   ```
+
+3. **Secretos** (Edge Functions → Secrets): `PANEL_CLAVE`, la misma clave, y `PANEL_DUENO`, el
+   correo del dueño en minúsculas. El dueño sale de este secreto, nunca de la petición.
+4. **Función.** Edge Functions → *Deploy a new function* → *Via Editor*. En «Function name», el
+   nombre `panel-subir`, tal cual. Hacen falta los dos archivos de
+   [`supabase/functions/panel-subir/`](supabase/functions/panel-subir/): `index.ts` y `validar.mjs`
+   (el segundo archivo que crea el editor hay que renombrarlo a `validar.mjs`). Despliégala y, en
+   sus ajustes, apaga **Enforce JWT verification**: el portátil no tiene sesión, entra con la clave.
+5. **Prueba.** En la misma ventana de PowerShell, desde la carpeta del repo:
+
+   ```powershell
+   Invoke-WebRequest -Method Post -Uri "https://TU_REF.supabase.co/functions/v1/panel-subir" -Headers @{ "x-panel-clave" = $env:PANEL_CLAVE } -ContentType "application/json" -Body ([IO.File]::ReadAllBytes("setup\panel-ejemplo.json")) -UseBasicParsing
+   ```
+
+   Tiene que responder **204**. Deja el ejemplo inventado en el panel hasta que el portátil mande
+   los datos de verdad. Sin clave responde 401; con otro método, 405; y si el JSON no cumple el
+   Contrato, 400 con los motivos.
+
+Cada vez que cambie `validar.mjs` hay que volver a desplegar la función.
+
+### Probar y desarrollar
+
+- `node --test` desde la raíz del repo ejecuta las pruebas del validador y de la función, que están
+  en `setup/pruebas/`.
+- En la vista previa local, `?panel=ejemplo` (solo en `localhost`) carga
+  [`setup/panel-ejemplo.json`](setup/panel-ejemplo.json), con datos inventados y sus fechas
+  corridas a hoy; `&horas=5` simula que el portátil lleva 5 horas sin mandar datos.
+- Las fórmulas se pintan con KaTeX 0.16.47 (jsDelivr, con SRI), que solo se descarga si hay panel.

@@ -26,6 +26,14 @@ Nada de esto es bloqueante ni pone en riesgo datos o seguridad.
   `novedades` sean de los últimos 7 días: con la hora de por medio, un JSON generado a las 23:59 y
   recibido a las 00:00 se rechazaría. Eso lo garantiza el productor; la vista ya decide qué es hoy.
 
+## Panel personal: lo que queda para la Fase 2 (2026-10-08)
+
+- **«Hecho» solo en local.** Los ejercicios hechos se guardan en el dispositivo (`localStorage`):
+  no se sincronizan entre el celular y el PC.
+- **Sin control de orden si llegan dos JSON a la vez.** El upsert se queda con el que llega último,
+  aunque su `generado` sea más viejo.
+- **El widget de Android aún no muestra el panel** (ni la próxima entrega).
+
 ## Panel personal: la vista (2026-10-08)
 
 - **Color de cada materia por suma de letras.** Con solo cuatro colores, dos materias pueden
