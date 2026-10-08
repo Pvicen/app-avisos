@@ -151,15 +151,24 @@ días que faltan, el resto de la semana, las novedades de Canvas y, más adelant
    [`setup/migraciones/2026-10-08-panel.sql`](setup/migraciones/2026-10-08-panel.sql) y después el
    bloque de [`setup/pruebas/panel-rls.md`](setup/pruebas/panel-rls.md): todo tiene que salir
    `PASA`. Si la API dice que no encuentra la tabla, ejecuta `notify pgrst, 'reload schema';`.
-2. **Clave del portátil.** En el portátil, en PowerShell (la clave no pasa por ningún chat: se
-   guarda en tu usuario de Windows y se copia al portapapeles):
+2. **Clave del portátil.** En el portátil, en PowerShell. La clave no pasa por ningún chat ni se
+   guarda en Windows: vive solo en esa ventana (`$env:PANEL_CLAVE`) y se copia al portapapeles:
 
    ```powershell
-   $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); $clave = -join ($b | ForEach-Object { $_.ToString("x2") }); [Environment]::SetEnvironmentVariable("PANEL_CLAVE", $clave, "User"); $env:PANEL_CLAVE = $clave; Set-Clipboard $clave
+   $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); $env:PANEL_CLAVE = -join ($b | ForEach-Object { $_.ToString("x2") }); Set-Clipboard $env:PANEL_CLAVE
    ```
 
-3. **Secretos** (Edge Functions → Secrets): `PANEL_CLAVE`, la misma clave, y `PANEL_DUENO`, el
-   correo del dueño en minúsculas. El dueño sale de este secreto, nunca de la petición.
+   No cierres esa ventana hasta la prueba del paso 5. El programa del portátil necesita la misma
+   clave: dásela como indique ese programa, nunca dentro de este repo.
+3. **Secretos** (Edge Functions → Secrets): `PANEL_CLAVE`, pegando la clave, y `PANEL_DUENO`, el
+   correo del dueño en minúsculas. El dueño sale de este secreto, nunca de la petición. Después,
+   **borra el portapapeles** en la misma ventana:
+
+   ```powershell
+   Add-Type -AssemblyName System.Windows.Forms; [Windows.Forms.Clipboard]::Clear()
+   ```
+
+   Si tienes activado el historial del portapapeles (Win+V), borra también ahí esa entrada.
 4. **Función.** Edge Functions → *Deploy a new function* → *Via Editor*. En «Function name», el
    nombre `panel-subir`, tal cual. Hacen falta los dos archivos de
    [`supabase/functions/panel-subir/`](supabase/functions/panel-subir/): `index.ts` y `validar.mjs`
