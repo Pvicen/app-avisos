@@ -5,7 +5,8 @@ iPhone), sincronizada en tiempo real. Agregas un aviso en un dispositivo y apare
 instante en los demás; lo marcas como hecho y pasa al historial en todos. Al tocar un
 aviso aparecen sus opciones: editarlo, agregarle una nota, marcarlo como importante (sube
 al principio con una franja coral) y ponerle fecha límite (se destaca cuando está por
-vencer). Cada aviso muestra quién lo anotó y el historial quién lo hizo; desde ahí se
+vencer) y, si hace falta, una hora exacta («Hoy · 18:00»: la notificación suena a esa hora).
+Cada aviso muestra quién lo anotó y el historial quién lo hizo; desde ahí se
 puede devolver a pendientes (o usar el "Deshacer" rápido). También avisa con
 notificaciones cuando algo vence (🔔).
 
@@ -92,24 +93,28 @@ Para quitar a alguien: `delete from public.personas where correo = 'su-correo@ej
 ## Notificaciones push (opcional)
 
 Para que el celular/PC avise cuando un aviso vence (incluso con la app cerrada) hace falta
-una Edge Function en Supabase que revisa cada hora y envía el push. Configuración (una vez):
+una Edge Function en Supabase que revisa cada minuto y envía el push. Configuración (una vez):
 
 1. **Función**: Dashboard → **Edge Functions** → *Deploy a new function* → nombre `notificar`,
-   pega el contenido de [`supabase/functions/notificar/index.ts`](supabase/functions/notificar/index.ts)
-   y despliega. En los detalles de la función, **desactiva "Verify JWT"** (la protege el
-   secreto del cron).
+   pega el contenido de [`supabase/functions/notificar/index.ts`](supabase/functions/notificar/index.ts),
+   añade un segundo archivo llamado exactamente `reglas.mjs` con el contenido de
+   [`supabase/functions/notificar/reglas.mjs`](supabase/functions/notificar/reglas.mjs) (si el
+   editor lo crea como `file2.ts`, renómbralo) y despliega. En los detalles de la función,
+   **desactiva "Verify JWT"** (la protege el secreto del cron).
 2. **Secretos**: en Edge Functions → **Secrets** agrega:
    - `VAPID_KEYS`: el JSON con las llaves VAPID (generadas al configurar el proyecto)
    - `VAPID_SUBJECT`: `mailto:tu-correo`
    - `CRON_SECRET`: una cadena aleatoria larga
-3. **Migración**: ejecuta [`setup/migraciones/2026-08-25-notas-notificaciones.sql`](setup/migraciones/2026-08-25-notas-notificaciones.sql)
-   en el SQL Editor (reemplazando el correo).
+3. **Migraciones**: ejecuta [`setup/migraciones/2026-08-25-notas-notificaciones.sql`](setup/migraciones/2026-08-25-notas-notificaciones.sql)
+   en el SQL Editor (reemplazando el correo) y, para la hora exacta,
+   [`setup/migraciones/2026-10-08-hora.sql`](setup/migraciones/2026-10-08-hora.sql) (tiene que
+   salir `PASA`).
 4. **Cron**: en el SQL Editor, con tu ref de proyecto y tu CRON_SECRET:
 
    ```sql
    create extension if not exists pg_cron;
    create extension if not exists pg_net;
-   select cron.schedule('avisos-notificar', '5 * * * *', $$
+   select cron.schedule('avisos-notificar', '* * * * *', $$
      select net.http_post(
        url := 'https://TU_REF.supabase.co/functions/v1/notificar',
        headers := '{"Content-Type":"application/json","x-cron-secret":"TU_CRON_SECRET"}'::jsonb,
@@ -118,9 +123,21 @@ una Edge Function en Supabase que revisa cada hora y envía el push. Configuraci
    $$);
    ```
 
+   Si ya tenías el cron de antes (cada hora, `'5 * * * *'`), basta con cambiarle el horario:
+
+   ```sql
+   select cron.alter_job(
+     job_id := (select jobid from cron.job where jobname = 'avisos-notificar'),
+     schedule := '* * * * *'
+   );
+   ```
+
 5. En la app, toca **🔔** en cada dispositivo donde quieras recibir avisos y acepta el permiso.
 
-La función notifica **una vez por aviso** el día en que vence (desde las 9:00, hora de Chile).
+La función trabaja en **hora de España** y notifica **una vez por aviso**: los que tienen
+fecha y no hora, el día en que vencen desde las 9:00; los que tienen hora, a esa hora (con
+hasta un minuto de retraso), y no en el aviso de las 9:00. Si se le cambia la fecha o la hora,
+vuelve a sonar. Las notificaciones llegan a todos los dispositivos donde se activó la 🔔.
 La llave pública VAPID va en `config.js`; la privada solo vive en los secretos de Supabase.
 
 ## Compartir → Aviso (Android)

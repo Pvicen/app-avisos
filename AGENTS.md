@@ -84,7 +84,7 @@ Antes de programar, cada Caja se clasifica. **Ante la duda, es crítica.**
 | Interfaz | `index.html`, `app.js`, `style.css` | Columnas de `avisos` y `personas` |
 | Cáscara PWA | `sw.js`, `manifest.webmanifest`, `icons/` | Lista `ASSETS` y número `CACHE` de `sw.js` |
 | BD | `setup/supabase.sql` y `setup/migraciones/` (en orden) | Cabecera «Contrato de datos» de `setup/migraciones/2026-09-25-app-compartida.sql` |
-| Notificaciones | `supabase/functions/notificar/index.ts` | Lee `avisos` y `push_suscripciones` con la service role |
+| Notificaciones | `supabase/functions/notificar/` (`index.ts` y las reglas en `reglas.mjs`) | Lee `avisos` y `push_suscripciones` con la service role; columnas `hora`/`notificado_hora` de `setup/migraciones/2026-10-08-hora.sql` |
 | Configuración | `config.js` | Solo claves públicas: URL, clave anon y llave VAPID pública |
 | Panel | `supabase/functions/panel-subir/`, la tabla `panel` y su vista en `app.js` | Contratos C1, C2 y C3 de `docs/panel-contrato.md` |
 
@@ -134,7 +134,8 @@ http://localhost:8123/). Sin sesión solo se ve la entrada; para mirar la lista 
 inventados desde la consola, sin tocar Supabase. El panel se prueba con `?panel=ejemplo`, que
 solo funciona en localhost y lee `setup/panel-ejemplo.json`.
 
-Las pruebas automáticas son las del panel (`setup/pruebas/`). Gate mínimo antes de commitear:
+Las pruebas automáticas son las del panel y las de las reglas de `Notificar` (`setup/pruebas/`).
+Gate mínimo antes de commitear:
 
 ```powershell
 node --check app.js; node --check sw.js; node --test
