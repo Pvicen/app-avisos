@@ -91,7 +91,7 @@
       "materia": "Astronomía",
       "tema": "Energía de un satélite en órbita",
       "enunciado": "Un satélite de $m = 1000$ kg gira alrededor de la Tierra en una órbita circular de radio $r$, con energía mecánica $E = \\frac{1}{2} m v^2 - \\frac{G M m}{r} = -\\frac{G M m}{2 r} = -\\frac{(6{,}67 \\cdot 10^{-11})(5{,}97 \\cdot 10^{24})(1000)}{2 \\cdot 7{,}0 \\cdot 10^{6}}$ julios.\n¿Cuánto vale $E$?",
-      "solucion": "Sustituyendo, $E = -\\frac{6{,}67 \\cdot 5{,}97 \\cdot 10^{16}}{1{,}4 \\cdot 10^{7}} \\approx -\\frac{3{,}98 \\cdot 10^{17}}{1{,}4 \\cdot 10^{7}} \\approx -2{,}85 \\cdot 10^{10}$ julios.\nEl signo negativo indica que el satélite está ligado a la Tierra.",
+      "solucion": "Sustituyendo, $E = -\\frac{6{,}67 \\cdot 5{,}97 \\cdot 10^{16}}{1{,}4 \\cdot 10^{7}} \\approx -\\frac{3{,}98 \\cdot 10^{17}}{1{,}4 \\cdot 10^{7}} \\approx -2{,}84 \\cdot 10^{10}$ julios.\nEl signo negativo indica que el satélite está ligado a la Tierra.",
       "nivel": 2
     }
   ],
