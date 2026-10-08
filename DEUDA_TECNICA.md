@@ -20,6 +20,12 @@ Nada de esto es bloqueante ni pone en riesgo datos o seguridad.
 - **Notificaciones sin autoría.** Llegan a todos los dispositivos de todas las personas,
   sin decir quién anotó el aviso.
 
+## Panel personal: Edge Function `panel-subir` (2026-10-08)
+
+- **El validador no mira el reloj.** No comprueba que el primer día de `dias` sea hoy ni que las
+  `novedades` sean de los últimos 7 días: con la hora de por medio, un JSON generado a las 23:59 y
+  recibido a las 00:00 se rechazaría. Eso lo garantiza el productor; la vista ya decide qué es hoy.
+
 ## Diseño "Cálido" (2026-09-25)
 
 - **Fuente Nunito desde Google Fonts.** Sin conexión y con la caché del navegador vencida,
