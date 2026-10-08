@@ -163,10 +163,23 @@ test("texto plano: sin saltos de línea fuera de los ejercicios, sin HTML y sin 
   const c = ejemplo();
   c.dias[0].clases = "Música\u0000";
   rechaza(c, "dias[0].clases: lleva un carácter nulo");
-  // En los ejercicios sí hay saltos de línea, y < y > son fórmulas, no HTML
+  // En los ejercicios sí hay saltos de línea, y < y > de las fórmulas no son HTML
   const d = ejemplo();
-  d.ejercicios[0].enunciado = "Si $a<b$ y $b>c$:\n$$a<b>c$$";
+  d.ejercicios[0].enunciado = "Si $x<y$ y $b>c$:\n$$a < b > c$$\n$$0<x\\leq 1,\\ y>2$$";
+  d.ejercicios[0].solucion = "Como $|x|<1$ y $y>0$, se cumple $x<y$.";
   pasa(d);
+});
+
+test("tampoco hay HTML en el enunciado ni en la solución de los ejercicios", () => {
+  const a = ejemplo();
+  a.ejercicios[0].enunciado = "Calcula $T$.\n<img src=x onerror=alert(1)>";
+  rechaza(a, "ejercicios[0].enunciado: no puede llevar HTML");
+  const b = ejemplo();
+  b.ejercicios[2].solucion = "La respuesta es <b>500</b>.";
+  rechaza(b, "ejercicios[2].solucion: no puede llevar HTML");
+  const c = ejemplo();
+  c.ejercicios[1].solucion = "$$f = 880$$</p>";
+  rechaza(c, "ejercicios[1].solucion: no puede llevar HTML");
 });
 
 test("vacíos: solo donde C1 lo permite", () => {

@@ -13,8 +13,8 @@ const RE_FECHA = /^(\d{4})-(\d{2})-(\d{2})$/;
 const RE_INSTANTE =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,6})?)?(?:Z|[+-](\d{2}):(\d{2}))$/;
 const RE_ID = /^[a-z0-9-]{1,40}$/;
-// Algo con forma de etiqueta HTML (<b>, </p>, <img src=…>). No se aplica a las fórmulas, donde
-// `<` y `>` son comparaciones.
+// Algo con forma de etiqueta HTML (<b>, </p>, <img src=…>). Vale para todos los campos, también
+// los ejercicios: las comparaciones de las fórmulas ($x<y$, $a < b > c$) no tienen esa forma.
 const RE_ETIQUETA = /<\/?[a-z][a-z0-9-]*(?:\s[^<>]*)?\/?>/i;
 
 /**
@@ -112,8 +112,8 @@ export function validarPanel(datos) {
     }
     v.texto(`${r}.materia`, x.materia, 60);
     v.texto(`${r}.tema`, x.tema, 120);
-    v.texto(`${r}.enunciado`, x.enunciado, 4000, { lineas: true, formulas: true });
-    v.texto(`${r}.solucion`, x.solucion, 8000, { lineas: true, formulas: true });
+    v.texto(`${r}.enunciado`, x.enunciado, 4000, { lineas: true });
+    v.texto(`${r}.solucion`, x.solucion, 8000, { lineas: true });
     if (x.nivel !== 1 && x.nivel !== 2 && x.nivel !== 3) v.mal(`${r}.nivel`, "tiene que ser 1, 2 o 3");
   });
 
@@ -190,7 +190,7 @@ class Revision {
    * Texto plano de como mucho `max` caracteres (contados como letras, no como unidades de
    * UTF-16: un emoji cuenta uno). Por defecto, sin vacíos ni saltos de línea.
    */
-  texto(ruta, valor, max, { vacio = false, lineas = false, formulas = false } = {}) {
+  texto(ruta, valor, max, { vacio = false, lineas = false } = {}) {
     if (typeof valor !== "string") return this.mal(ruta, "tiene que ser texto");
     let bien = true;
     const largo = [...valor].length;
@@ -198,7 +198,7 @@ class Revision {
     if (!vacio && valor.trim() === "") bien = this.mal(ruta, "no puede estar vacío");
     if (valor.includes("\u0000")) bien = this.mal(ruta, "lleva un carácter nulo");
     if (!lineas && /[\r\n]/.test(valor)) bien = this.mal(ruta, "no puede llevar saltos de línea");
-    if (!formulas && RE_ETIQUETA.test(valor)) bien = this.mal(ruta, "no puede llevar HTML");
+    if (RE_ETIQUETA.test(valor)) bien = this.mal(ruta, "no puede llevar HTML");
     return bien;
   }
 
