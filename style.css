@@ -720,7 +720,9 @@ dialog.hoja::backdrop { background: var(--velo); }
 .nivel-3 { background: var(--chip-hoy-fondo); color: var(--chip-hoy-texto); }
 
 .texto-formulas { font-size: 15px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
-.texto-formulas .katex { font-size: 1.08em; white-space: nowrap; }
+/* Sin nowrap: KaTeX parte las fórmulas en línea largas tras los = y los operadores (si no, la
+   página se ensancharía en el móvil) */
+.texto-formulas .katex { font-size: 1.08em; }
 /* Una fórmula que no cabe se desliza dentro de su línea, nunca ensancha la página */
 .texto-formulas .katex-display {
   margin: 8px 0;

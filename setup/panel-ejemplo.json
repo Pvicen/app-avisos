@@ -85,6 +85,14 @@
       "enunciado": "Una población de helechos sigue $\\frac{dP}{dt} = rP\\left(1 - \\frac{P}{K}\\right)$ con $r = 0{,}5$ y $K = 1000$.\n¿Con cuántos helechos crece más rápido?",
       "solucion": "La velocidad $f(P) = rP\\left(1 - \\frac{P}{K}\\right)$ es una parábola en $P$:\n$$f'(P) = r\\left(1 - \\frac{2P}{K}\\right) = 0 \\Rightarrow P = \\frac{K}{2} = 500$$\nCrece más rápido con 500 helechos.",
       "nivel": 3
+    },
+    {
+      "id": "ast-0002",
+      "materia": "Astronomía",
+      "tema": "Energía de un satélite en órbita",
+      "enunciado": "Un satélite de $m = 1000$ kg gira alrededor de la Tierra en una órbita circular de radio $r$, con energía mecánica $E = \\frac{1}{2} m v^2 - \\frac{G M m}{r} = -\\frac{G M m}{2 r} = -\\frac{(6{,}67 \\cdot 10^{-11})(5{,}97 \\cdot 10^{24})(1000)}{2 \\cdot 7{,}0 \\cdot 10^{6}}$ julios.\n¿Cuánto vale $E$?",
+      "solucion": "Sustituyendo, $E = -\\frac{6{,}67 \\cdot 5{,}97 \\cdot 10^{16}}{1{,}4 \\cdot 10^{7}} \\approx -\\frac{3{,}98 \\cdot 10^{17}}{1{,}4 \\cdot 10^{7}} \\approx -2{,}85 \\cdot 10^{10}$ julios.\nEl signo negativo indica que el satélite está ligado a la Tierra.",
+      "nivel": 2
     }
   ],
   "banco": [
