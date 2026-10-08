@@ -349,7 +349,9 @@ button:focus-visible, .pildora:focus-within, .campo:focus-visible {
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .chips:empty { display: none; }
 .chip { font-size: 13px; font-weight: 800; padding: 2px 10px; border-radius: 999px; }
-.chip.hoy, .chip.vencido { background: var(--chip-hoy-fondo); color: var(--chip-hoy-texto); }
+.chip.hoy { background: var(--chip-hoy-fondo); color: var(--chip-hoy-texto); }
+/* Vencido (o de hoy con la hora ya pasada): lleno, para que se distinga de «Hoy» */
+.chip.vencido { background: var(--acento-boton); color: var(--sobre-acento); }
 .chip.pronto { background: var(--chip-pronto-fondo); color: var(--chip-pronto-texto); }
 .chip.normal { background: var(--chip-normal-fondo); color: var(--chip-normal-texto); }
 
@@ -383,8 +385,9 @@ button:focus-visible, .pildora:focus-within, .campo:focus-visible {
 .pildora:hover { border-color: var(--acento); }
 .pildora.activa { background: var(--chip-hoy-fondo); color: var(--chip-hoy-texto); border-color: transparent; }
 
-/* El calendario invisible cubre toda la píldora: al tocarla se abre el selector nativo */
-.pildora input[type="date"] {
+/* El calendario (o el reloj) invisible cubre toda la píldora: al tocarla se abre el selector nativo */
+.pildora input[type="date"],
+.pildora input[type="time"] {
   position: absolute;
   inset: 0;
   width: 100%;

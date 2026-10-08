@@ -30,6 +30,18 @@ Nada de esto es bloqueante ni pone en riesgo datos o seguridad.
 - **Si el push falla siempre (no por dispositivo caducado), se reintenta cada minuto** y deja una
   línea «Fallo push» en los logs de la función en cada vuelta.
 
+## Hora exacta: la interfaz (2026-10-08)
+
+- **«Hoy · 18:00» se rellena hasta 2 minutos tarde.** Con la app abierta, la lista se refresca cada
+  2 minutos; la etiqueta cambia a «ya pasó» en ese refresco, no en el minuto justo.
+- **Selector de hora en iPhone.** Como el de fecha: si la rueda dispara `change` antes de cerrarse,
+  se guarda la primera hora tocada (luego se puede cambiar).
+- **Todo en el reloj del dispositivo.** «Hoy», «ya pasó» y «hora sin fecha = hoy o mañana» usan la
+  zona del teléfono o el PC; la notificación usa la de España. Con un dispositivo en otra zona
+  horaria no cuadrarían.
+- **La versión vieja de la app (en caché) no borra la hora al quitar la fecha.** La hora se queda
+  guardada pero no se ve ni suena (sin fecha no cuenta); vuelve a verse si se pone fecha.
+
 ## Panel personal: Edge Function `panel-subir` (2026-10-08)
 
 - **El validador no mira el reloj.** No comprueba que el primer día de `dias` sea hoy ni que las

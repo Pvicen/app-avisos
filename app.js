@@ -280,6 +280,7 @@ async function cargar() {
     .is("completado_en", null)
     .order("prioridad", { ascending: false })
     .order("vence", { ascending: true, nullsFirst: false })
+    .order("hora", { ascending: true, nullsFirst: false }) // en el mismo día, primero los que tienen hora
     .order("creado_en", { ascending: true });
   if (seq !== cargaSeq) return; // llegó tarde: ya hay una petición más nueva en vuelo
   if (error) {
@@ -295,17 +296,37 @@ function hoyLocal() {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
-function infoVence(vence) {
+// "AAAA-MM-DD" del día local (la app la usan dos personas en España: el reloj del dispositivo)
+function fechaISO(d) {
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+
+// "HH:MM" de ahora, para comparar con la hora de un aviso
+function horaActual() {
+  return horaCorta(new Date());
+}
+
+// "09:30:00" (como la guarda la base) → "9:30"
+function horaLegible(hora) {
+  const [h, m] = hora.split(":");
+  return Number(h) + ":" + m;
+}
+
+// La hora solo cuenta si hay fecha (contrato de la migración 2026-10-08-hora.sql)
+function infoVence(vence, hora) {
   if (!vence) return null;
   const [a, m, d] = vence.split("-").map(Number);
   const fecha = new Date(a, m - 1, d);
   const dias = Math.round((fecha - hoyLocal()) / 86400000);
   const corta = d + " " + MESES[m - 1] + (a !== hoyLocal().getFullYear() ? " " + a : "");
-  if (dias < 0) return { clase: "vencido", texto: "Venció el " + corta };
-  if (dias === 0) return { clase: "hoy", texto: "Hoy" };
-  if (dias === 1) return { clase: "pronto", texto: "Mañana" };
-  if (dias < 7) return { clase: dias <= 3 ? "pronto" : "normal", texto: DIAS[fecha.getDay()] + " " + d };
-  return { clase: "normal", texto: corta };
+  let info;
+  if (dias < 0) info = { clase: "vencido", texto: "Venció el " + corta };
+  else if (dias === 0) info = { clase: hora && hora.slice(0, 5) <= horaActual() ? "vencido" : "hoy", texto: "Hoy" };
+  else if (dias === 1) info = { clase: "pronto", texto: "Mañana" };
+  else if (dias < 7) info = { clase: dias <= 3 ? "pronto" : "normal", texto: DIAS[fecha.getDay()] + " " + d };
+  else info = { clase: "normal", texto: corta };
+  if (hora) info.texto += " · " + horaLegible(hora);
+  return info;
 }
 
 function aplicarRefrescoPospuesto() {
@@ -334,17 +355,33 @@ function pildoraFecha(aviso) {
   input.value = aviso.vence || "";
   input.setAttribute("aria-label", aviso.vence ? "Cambiar fecha límite" : "Poner fecha límite");
   input.addEventListener("change", () => cambiarVence(aviso, input.value));
-  // En PC con ratón, un clic sobre el campo no abre el calendario por sí solo
-  input.addEventListener("click", () => {
-    if (!window.matchMedia("(pointer: fine)").matches) return;
-    try {
-      input.showPicker();
-    } catch {
-      // navegador sin showPicker: el campo recibe el foco y se puede escribir la fecha
-    }
-  });
+  input.addEventListener("click", () => abrirSelectorEnPC(input));
   pildoraEl.append(icono("calendario"), document.createTextNode("Fecha"), input);
   return pildoraEl;
+}
+
+// Píldora de hora: igual que la de fecha, con un <input type="time"> invisible encima
+function pildoraHora(aviso) {
+  const pildoraEl = document.createElement("label");
+  pildoraEl.className = "pildora";
+  const input = document.createElement("input");
+  input.type = "time";
+  input.value = aviso.hora ? aviso.hora.slice(0, 5) : "";
+  input.setAttribute("aria-label", aviso.vence && aviso.hora ? "Cambiar hora" : "Poner hora");
+  input.addEventListener("change", () => cambiarHora(aviso, input.value));
+  input.addEventListener("click", () => abrirSelectorEnPC(input));
+  pildoraEl.append(icono("reloj"), document.createTextNode("Hora"), input);
+  return pildoraEl;
+}
+
+// En PC con ratón, un clic sobre el campo no abre el selector por sí solo
+function abrirSelectorEnPC(input) {
+  if (!window.matchMedia("(pointer: fine)").matches) return;
+  try {
+    input.showPicker();
+  } catch {
+    // navegador sin showPicker: el campo recibe el foco y se puede escribir a mano
+  }
 }
 
 function alternarAbierto(id) {
@@ -397,7 +434,7 @@ function render(avisos) {
 
     const chips = document.createElement("div");
     chips.className = "chips";
-    const info = infoVence(aviso.vence);
+    const info = infoVence(aviso.vence, aviso.hora);
     if (info) {
       const chip = document.createElement("span");
       chip.className = "chip " + info.clase;
@@ -422,10 +459,14 @@ function render(avisos) {
       pildora("editar", "Editar", () => editar(aviso, span)),
       pildora("nota", "Nota", () => editarNota(aviso, contenido)),
       pildora("bandera", "Importante", () => cambiarPrioridad(aviso), aviso.prioridad),
-      pildoraFecha(aviso)
+      pildoraFecha(aviso),
+      pildoraHora(aviso)
     );
     if (aviso.vence) {
       acciones.append(pildora("x", "Sin fecha", () => cambiarVence(aviso, "")));
+    }
+    if (aviso.vence && aviso.hora) {
+      acciones.append(pildora("x", "Sin hora", () => cambiarHora(aviso, "")));
     }
     li.append(acciones);
 
@@ -619,7 +660,26 @@ async function cambiarPrioridad(aviso) {
 }
 
 async function cambiarVence(aviso, valor) {
-  const r = await actualizarAviso(aviso.id, { vence: valor || null }, "cambiar la fecha");
+  // Sin fecha, la hora no cuenta: se quita también
+  const cambios = valor ? { vence: valor } : { vence: null, hora: null };
+  const r = await actualizarAviso(aviso.id, cambios, "cambiar la fecha");
+  if (r) {
+    estado(r.fallo);
+    if (r.desaparecido) cargar();
+    return;
+  }
+  cargar();
+}
+
+// Una hora sin fecha es para hoy, o para mañana si esa hora ya pasó
+async function cambiarHora(aviso, valor) {
+  const cambios = { hora: valor || null };
+  if (valor && !aviso.vence) {
+    const dia = hoyLocal();
+    if (valor <= horaActual()) dia.setDate(dia.getDate() + 1);
+    cambios.vence = fechaISO(dia);
+  }
+  const r = await actualizarAviso(aviso.id, cambios, "cambiar la hora");
   if (r) {
     estado(r.fallo);
     if (r.desaparecido) cargar();
