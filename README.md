@@ -158,6 +158,24 @@ widget) y el saludo cuenta cuántos son para ti. Tocar otra vez la píldora acti
   [`setup/migraciones/2026-10-09-te-toca.sql`](setup/migraciones/2026-10-09-te-toca.sql) y su
   prueba [`setup/pruebas/te-toca.md`](setup/pruebas/te-toca.md).
 
+## Avisos por lugar (Android)
+
+Para que un aviso salte **al llegar a un sitio** («comprar pan» al llegar al súper):
+
+1. En la app de Android del widget ([Pvicen/avisos-widget](https://github.com/Pvicen/avisos-widget)),
+   **Lugares** → **Dar permiso** (ubicación «Permitir todo el tiempo» y notificaciones).
+2. Estando en el sitio, escribe su nombre y pulsa **Guardar dónde estoy**. Si el nombre ya existe,
+   ofrece moverlo a donde estás.
+3. En la app web, al tocar un aviso, la píldora **Lugar** deja elegirlo; el aviso lleva la etiqueta
+   «📍 Súper» (también en el widget).
+
+Al entrar en la zona del lugar (150 m), ese Android enseña «📍 En Súper: comprar pan · leche», una
+vez por visita. Lo vigila el propio teléfono: la ubicación no sale de él; en Supabase solo están los
+sitios guardados (migración
+[`setup/migraciones/2026-10-10-lugares.sql`](setup/migraciones/2026-10-10-lugares.sql), prueba en
+[`setup/pruebas/lugares.md`](setup/pruebas/lugares.md)). En iPhone no hay avisos por lugar (una web no
+puede vigilar sitios), pero se ve la etiqueta.
+
 ## Resumen del lunes
 
 Cada lunes desde las 9:00 (hora de España), `Notificar` le envía a cada persona, a sus

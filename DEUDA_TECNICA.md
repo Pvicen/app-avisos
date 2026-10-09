@@ -20,6 +20,16 @@ Nada de esto es bloqueante ni pone en riesgo datos o seguridad.
 - **Notificaciones sin autoría.** Llegan a todos los dispositivos de todas las personas,
   sin decir quién anotó el aviso.
 
+## Avisos por lugar (2026-10-10)
+
+- **Solo avisa el Android con la app del widget.** El iPhone ve la etiqueta «📍 …», pero una web no
+  puede vigilar sitios.
+- **Los lugares se crean y se borran desde el Android.** La web solo los elige; sin lugares
+  guardados, la píldora «Lugar» no aparece.
+- **Escribir como hablas no entiende «en el súper»**: el lugar se pone con la píldora.
+- **Nombres en la notificación**: los avisos de ese lugar salen tal como estaban en la copia del
+  teléfono (hasta ~30 min de antigüedad). El detalle de lo que no cubre está en la deuda del widget.
+
 ## Resumen del lunes (2026-10-09)
 
 - **Coincide con el aviso de las 9:00.** El lunes a las 9:00 pueden llegar a la vez el resumen y

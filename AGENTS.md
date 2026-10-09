@@ -90,7 +90,8 @@ Antes de programar, cada Caja se clasifica. **Ante la duda, es crítica.**
 | Panel | `supabase/functions/panel-subir/`, la tabla `panel` y su vista en `app.js` | Contratos C1, C2 y C3 de `docs/panel-contrato.md` |
 
 Fuera de este repo, y sin romperlos: el widget de Android (repo `Pvicen/avisos-widget`, que lee
-`avisos` con `creado_por` y `personas`) y la app instalada en iPhone.
+`avisos` con `creado_por`, `personas` y `lugares`, y vigila los lugares con geovallas) y la app
+instalada en iPhone. Los lugares: `setup/migraciones/2026-10-10-lugares.sql`.
 
 **Lotes (C.C.D. §6):** son críticas toda migración o cambio de RLS, toda Edge Function y lo que
 toque sesión, permisos o datos de otra persona; la documentación y los ajustes de estilo pueden ir
