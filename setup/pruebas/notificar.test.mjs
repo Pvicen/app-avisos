@@ -7,10 +7,14 @@ import {
   ahoraEnEspana,
   cuerpoDelAviso,
   debeSonar,
+  esHoraDelResumen,
+  lunesDe,
   MAX_INTENTOS_EVENTO,
   mensajeDeEvento,
   repartir,
   repartirEventos,
+  repartirResumen,
+  resumenDelLunes,
   yaSono,
 } from "../../supabase/functions/notificar/reglas.mjs";
 
@@ -341,4 +345,131 @@ test("eventos: un dispositivo muerto se borra una vez y no se reintenta", async 
   assert.deepEqual(log.borradas, ["https://push.ejemplo/beto-pc"]);
   assert.deepEqual(log.devueltos, []);
   assert.equal(log.enviados.filter((x) => x.endpoint.endsWith("beto-pc")).length, 1);
+});
+
+// ---------- Resumen del lunes ----------
+
+test("lunesDe: el lunes de cada semana, también al cambiar de mes y de año", () => {
+  assert.equal(lunesDe("2026-10-09"), "2026-10-05"); // viernes
+  assert.equal(lunesDe("2026-10-12"), "2026-10-12"); // lunes
+  assert.equal(lunesDe("2026-10-18"), "2026-10-12"); // domingo
+  assert.equal(lunesDe("2026-11-01"), "2026-10-26");
+  assert.equal(lunesDe("2027-01-01"), "2026-12-28");
+});
+
+test("el resumen toca los lunes desde las 9:00", () => {
+  assert.equal(esHoraDelResumen(a("08:59:59", "2026-10-12")), false);
+  assert.equal(esHoraDelResumen(a("09:00:00", "2026-10-12")), true);
+  assert.equal(esHoraDelResumen(a("23:59:00", "2026-10-12")), true);
+  assert.equal(esHoraDelResumen(a("09:00:00", "2026-10-13")), false); // martes
+  assert.equal(esHoraDelResumen(a("09:00:00", "2026-10-11")), false); // domingo
+});
+
+const PENDIENTES = [
+  { vence: "2026-10-12", para: ANA },
+  { vence: "2026-10-18", para: null },
+  { vence: "2026-10-19", para: BETO }, // la semana que viene
+  { vence: "2026-10-05", para: null }, // vencido
+  { vence: null, para: ANA },
+];
+const HECHOS = [
+  { completado_en: "2026-10-05T08:00:00Z", completado_por: ANA },
+  { completado_en: "2026-10-11T21:30:00Z", completado_por: BETO }, // domingo 23:30 en España
+  { completado_en: "2026-10-11T22:30:00Z", completado_por: BETO }, // lunes 0:30 en España: esta semana
+  { completado_en: "2026-10-04T21:59:00Z", completado_por: ANA }, // domingo anterior
+  { completado_en: "2026-10-07T10:00:00Z", completado_por: ANA },
+  { completado_en: "2026-10-08T10:00:00Z", completado_por: null },
+];
+
+test("resumen: cada persona el suyo, con lo de esta semana, lo vencido y lo hecho", () => {
+  const base = { lunes: "2026-10-12", pendientes: PENDIENTES, hechos: HECHOS, nombres: NOMBRES };
+  assert.deepEqual(resumenDelLunes({ ...base, correo: ANA }), {
+    titulo: "📋 Semana del 12 oct",
+    cuerpo: "Esta semana: 2 con fecha · 1 vencido · 2 para ti.\nLa semana pasada hicisteis 4 (tú 2, Beto 1, otros 1).",
+    tag: "resumen-2026-10-12",
+  });
+  assert.equal(
+    resumenDelLunes({ ...base, correo: BETO }).cuerpo,
+    "Esta semana: 2 con fecha · 1 vencido · 1 para ti.\nLa semana pasada hicisteis 4 (Ana 2, tú 1, otros 1)."
+  );
+});
+
+test("resumen: semana tranquila, plurales y una sola persona", () => {
+  const vacio = { lunes: "2026-10-12", correo: ANA, pendientes: [], hechos: [], nombres: NOMBRES };
+  assert.equal(resumenDelLunes(vacio).cuerpo, "Semana tranquila: nada con fecha.\nLa semana pasada no se completó nada.");
+  const vencidos = [{ vence: "2026-10-01", para: null }, { vence: "2026-09-30", para: null }];
+  assert.equal(
+    resumenDelLunes({ ...vacio, pendientes: vencidos }).cuerpo.split("\n")[0],
+    "Semana tranquila: nada con fecha · 2 vencidos."
+  );
+  const sola = new Map([[ANA, "Ana"]]);
+  assert.equal(
+    resumenDelLunes({ ...vacio, hechos: HECHOS.slice(0, 2), nombres: sola }).cuerpo.split("\n")[1],
+    "La semana pasada hiciste 2."
+  );
+});
+
+function entornoResumen({ ahora = a("09:00:00", "2026-10-12"), enviados = [], reservar = () => true, enviar = () => "ok", forzar = false } = {}) {
+  const log = { leidos: [], reservados: [], devueltos: [], enviados: [] };
+  const e = {
+    ahora,
+    forzar,
+    leerPersonas: async () => (log.leidos.push("personas"), [{ correo: ANA, nombre: "Ana" }, { correo: BETO, nombre: "Beto" }]),
+    leerEnviados: async (lunes) => (log.leidos.push("enviados " + lunes), enviados),
+    leerPendientes: async () => PENDIENTES,
+    leerHechos: async () => HECHOS,
+    leerSuscripciones: async () => SUBS_PAREJA,
+    reservarResumen: async (lunes, correo) => (log.reservados.push(lunes + " " + correo), reservar(correo)),
+    devolverResumen: async (lunes, correo) => log.devueltos.push(lunes + " " + correo),
+    enviar: async (s, mensaje) => (log.enviados.push(s.endpoint + " | " + mensaje.titulo), enviar(s, mensaje)),
+    borrarSuscripcion: async () => {},
+  };
+  return { e, log };
+}
+
+test("resumen: fuera del lunes a partir de las 9:00 no lee nada", async () => {
+  for (const ahora of [a("09:00:00", "2026-10-09"), a("08:59:00", "2026-10-12")]) {
+    const { e, log } = entornoResumen({ ahora });
+    assert.deepEqual(await repartirResumen(e), { resumenes: 0 });
+    assert.deepEqual(log.leidos, []);
+  }
+});
+
+test("resumen: el lunes a las 9:00 a cada uno en sus dispositivos, reservado antes", async () => {
+  const { e, log } = entornoResumen();
+  assert.deepEqual(await repartirResumen(e), { resumenes: 2, fallos: 0 });
+  assert.deepEqual(log.reservados, ["2026-10-12 " + ANA, "2026-10-12 " + BETO]);
+  assert.deepEqual(log.enviados, [
+    "https://push.ejemplo/ana-movil | 📋 Semana del 12 oct",
+    "https://push.ejemplo/beto-movil | 📋 Semana del 12 oct",
+    "https://push.ejemplo/beto-pc | 📋 Semana del 12 oct",
+  ]);
+  assert.ok(log.leidos.includes("enviados 2026-10-12"));
+});
+
+test("resumen: a quien ya lo tiene, o si otra vuelta lo reservó, no se le repite", async () => {
+  const yaLoTiene = entornoResumen({ enviados: [ANA] });
+  assert.deepEqual(await repartirResumen(yaLoTiene.e), { resumenes: 1, fallos: 0 });
+  assert.deepEqual(yaLoTiene.log.reservados, ["2026-10-12 " + BETO]);
+
+  const todos = entornoResumen({ enviados: [ANA, BETO] });
+  assert.deepEqual(await repartirResumen(todos.e), { resumenes: 0 });
+
+  const otraVuelta = entornoResumen({ reservar: (correo) => correo !== BETO });
+  assert.deepEqual(await repartirResumen(otraVuelta.e), { resumenes: 1, fallos: 0 });
+  assert.ok(otraVuelta.log.enviados.every((x) => x.includes("ana-movil")));
+});
+
+test("resumen: si no llega a ninguno de sus dispositivos, se devuelve para reintentar", async () => {
+  const { e, log } = entornoResumen({ enviar: (s) => (s.correo === BETO ? "fallo" : "ok") });
+  assert.deepEqual(await repartirResumen(e), { resumenes: 1, fallos: 2 });
+  assert.deepEqual(log.devueltos, ["2026-10-12 " + BETO]);
+});
+
+test("resumen: la prueba manual lo envía ya, sin mirar el día ni marcarlo", async () => {
+  const { e, log } = entornoResumen({ ahora: a("16:00:00", "2026-10-09"), forzar: true });
+  assert.deepEqual(await repartirResumen(e), { resumenes: 2, fallos: 0 });
+  assert.deepEqual(log.reservados, []);
+  assert.ok(!log.leidos.some((x) => x.startsWith("enviados")));
+  assert.equal(log.enviados[0], "https://push.ejemplo/ana-movil | (prueba) 📋 Semana del 5 oct");
 });

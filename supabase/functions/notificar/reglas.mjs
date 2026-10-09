@@ -113,6 +113,132 @@ export async function repartir(e) {
   return { enviadas, fallos, dispositivos: subs.length - muertas.size };
 }
 
+// ---------- Resumen del lunes (marca en avisos_resumenes, migración 2026-10-09-resumen.sql) ----------
+
+/** El resumen sale los lunes desde esta hora (de España), una vez por persona. */
+export const HORA_DEL_RESUMEN = "09:00:00";
+
+function sumarDias(fecha, dias) {
+  const d = new Date(fecha + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+
+/** El lunes (AAAA-MM-DD) de la semana de esa fecha. */
+export function lunesDe(fecha) {
+  const diaSemana = new Date(fecha + "T00:00:00Z").getUTCDay(); // 0 = domingo
+  return sumarDias(fecha, -((diaSemana + 6) % 7));
+}
+
+/** ¿Toca el resumen? Los lunes desde las 9:00. */
+export function esHoraDelResumen(ahora) {
+  return lunesDe(ahora.hoy) === ahora.hoy && ahora.hora >= HORA_DEL_RESUMEN;
+}
+
+function plural(n, uno, varios) {
+  return n + " " + (n === 1 ? uno : varios);
+}
+
+/**
+ * El resumen de una persona (`correo`) para la semana que empieza en `lunes`:
+ *   pendientes  [{ vence, para }]                       los avisos sin completar
+ *   hechos      [{ completado_en, completado_por }]     completados (los de la semana pasada cuentan)
+ *   nombres     Map correo → nombre
+ * «📋 Semana del 12 oct» · «Esta semana: 5 con fecha · 1 vencido · 2 para ti.» y
+ * «La semana pasada hicisteis 12 (Ana 7, tú 5).»
+ */
+export function resumenDelLunes({ lunes, correo, pendientes, hechos, nombres }) {
+  const domingo = sumarDias(lunes, 6);
+  const lunesPasado = sumarDias(lunes, -7);
+  const conFecha = pendientes.filter((a) => a.vence && a.vence >= lunes && a.vence <= domingo).length;
+  const vencidos = pendientes.filter((a) => a.vence && a.vence < lunes).length;
+  const paraTi = pendientes.filter((a) => a.para === correo).length;
+
+  const semana = [conFecha ? `Esta semana: ${conFecha} con fecha` : "Semana tranquila: nada con fecha"];
+  if (vencidos) semana.push(plural(vencidos, "vencido", "vencidos"));
+  if (paraTi) semana.push(`${paraTi} para ti`);
+
+  // Lo hecho entre el lunes pasado y el domingo, en días de España
+  const porPersona = new Map();
+  for (const h of hechos) {
+    const dia = ahoraEnEspana(new Date(h.completado_en)).hoy;
+    if (dia < lunesPasado || dia >= lunes) continue;
+    const quien = h.completado_por || "";
+    porPersona.set(quien, (porPersona.get(quien) || 0) + 1);
+  }
+  const total = [...porPersona.values()].reduce((a, b) => a + b, 0);
+  let pasada;
+  if (!total) {
+    pasada = "La semana pasada no se completó nada.";
+  } else if (nombres.size < 2) {
+    pasada = `La semana pasada hiciste ${total}.`;
+  } else {
+    const desglose = [...porPersona]
+      .sort((x, y) => y[1] - x[1])
+      .map(([quien, n]) => (quien === correo ? "tú" : nombreDe(quien, nombres) || "otros") + " " + n);
+    pasada = `La semana pasada hicisteis ${total} (${desglose.join(", ")}).`;
+  }
+
+  const [, mes, dia] = lunes.split("-");
+  return {
+    titulo: `📋 Semana del ${Number(dia)} ${MESES[Number(mes) - 1]}`,
+    cuerpo: semana.join(" · ") + ".\n" + pasada,
+    tag: "resumen-" + lunes,
+  };
+}
+
+/**
+ * Envía el resumen del lunes a quien aún no lo tenga. `e` trae:
+ *   ahora                        { hoy, hora } de España
+ *   forzar                       true: lo envía ya, sin mirar el día ni marcarlo (prueba manual)
+ *   leerPersonas()               [{ correo, nombre }]
+ *   leerEnviados(lunes)          correos que ya lo tienen
+ *   leerPendientes()             [{ vence, para }]
+ *   leerHechos()                 [{ completado_en, completado_por }] de los últimos días
+ *   leerSuscripciones()          [{ endpoint, datos, correo }]
+ *   reservarResumen(lunes, correo)   apunta el envío; true = lo envía esta vuelta
+ *   devolverResumen(lunes, correo)   lo borra para reintentarlo (no llegó a ningún dispositivo)
+ *   enviar(suscripcion, mensaje) "ok" | "muerta" | "fallo"
+ *   borrarSuscripcion(endpoint)
+ */
+export async function repartirResumen(e) {
+  if (!e.forzar && !esHoraDelResumen(e.ahora)) return { resumenes: 0 };
+  const lunes = lunesDe(e.ahora.hoy);
+
+  const personas = await e.leerPersonas();
+  const enviados = e.forzar ? new Set() : new Set(await e.leerEnviados(lunes));
+  const faltan = personas.filter((p) => !enviados.has(p.correo));
+  if (!faltan.length) return { resumenes: 0 };
+
+  const [pendientes, hechos, subs] = await Promise.all([e.leerPendientes(), e.leerHechos(), e.leerSuscripciones()]);
+  const nombres = new Map(personas.map((p) => [p.correo, p.nombre]));
+  let resumenes = 0;
+  let fallos = 0;
+  const muertas = new Set();
+
+  for (const p of faltan) {
+    if (!e.forzar && !(await e.reservarResumen(lunes, p.correo))) continue;
+    const mensaje = resumenDelLunes({ lunes, correo: p.correo, pendientes, hechos, nombres });
+    if (e.forzar) mensaje.titulo = "(prueba) " + mensaje.titulo;
+    let exitos = 0;
+    let fallosPersona = 0;
+    for (const s of subs) {
+      if (s.correo !== p.correo || muertas.has(s.endpoint)) continue;
+      const r = await e.enviar(s, mensaje);
+      if (r === "ok") exitos++;
+      else if (r === "muerta") muertas.add(s.endpoint);
+      else fallosPersona++;
+    }
+    if (exitos) resumenes++;
+    fallos += fallosPersona;
+    // No llegó a ninguno de sus dispositivos: la vuelta siguiente lo reintenta
+    if (!e.forzar && exitos === 0 && fallosPersona > 0) await e.devolverResumen(lunes, p.correo);
+  }
+
+  for (const endpoint of muertas) await e.borrarSuscripcion(endpoint);
+  return { resumenes, fallos };
+}
+
 // ---------- «Te toca a ti» y «terminado» (cola avisos_eventos, migración 2026-10-09-te-toca.sql) ----------
 
 /** Un evento que lleva más de esto esperando ya no se envía (p. ej. si la función estuvo parada). */
