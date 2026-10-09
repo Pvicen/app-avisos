@@ -88,6 +88,7 @@ let personas = new Map();       // correo → { nombre, color }; vacío si la BD
 let miCorreo = null;            // correo de quien usa este dispositivo
 let abiertoId = null;           // aviso con sus opciones desplegadas
 let pendientesVisibles = null;  // para el saludo (null = aún sin cargar)
+let paraMiVisibles = 0;         // de esos, los que me tocan a mí («te toca a ti»)
 let vista = "avisos";           // pestaña visible: "avisos" | "panel"
 let panelActual = null;         // { datos, sinConexion } o null si no hay panel
 let panelVisto = false;         // ya se aplicó la pestaña recordada
@@ -265,8 +266,10 @@ function actualizarSaludo() {
   let cuenta = "";
   if (pendientesVisibles !== null) {
     cuenta = pendientesVisibles === 0 ? "nada pendiente"
-      : pendientesVisibles === 1 ? "1 pendiente"
-      : pendientesVisibles + " pendientes";
+      : pendientesVisibles === 1 ? "1 pendiente"
+      : pendientesVisibles + " pendientes";
+    // Espacios duros: en pantallas estrechas «2 para ti» baja de línea entero, sin dejar «ti» solo
+    if (paraMiVisibles > 0 && personas.size > 1) cuenta += " · " + paraMiVisibles + " para ti";
   }
   if (yo) {
     ui.saludo.textContent = "Hola, " + yo.nombre + (cuenta ? " · " + cuenta : "");
@@ -403,6 +406,7 @@ function render(avisos) {
     return;
   }
   pendientesVisibles = avisos.length;
+  paraMiVisibles = avisos.filter((a) => a.para && a.para === miCorreo).length;
   actualizarSaludo();
   const conAutores = personas.size > 1;
   ui.lista.textContent = "";
@@ -439,6 +443,14 @@ function render(avisos) {
 
     const chips = document.createElement("div");
     chips.className = "chips";
+    // «Te toca a ti»: a quién le toca, con el color de esa persona
+    if (aviso.para && conAutores) {
+      const p = persona(aviso.para);
+      const chip = document.createElement("span");
+      chip.className = "chip " + (p ? "p" + p.color : "px");
+      chip.textContent = aviso.para === miCorreo ? "Para ti" : "Para " + (p ? p.nombre : aviso.para);
+      chips.append(chip);
+    }
     const info = infoVence(aviso.vence, aviso.hora);
     if (info) {
       const chip = document.createElement("span");
@@ -472,6 +484,15 @@ function render(avisos) {
     }
     if (aviso.vence && aviso.hora) {
       acciones.append(pildora("x", "Sin hora", () => cambiarHora(aviso, "")));
+    }
+    // «Te toca a ti»: primero las otras personas y al final «Para mí»; tocar la activa lo quita
+    if (conAutores) {
+      const correos = [...personas.keys()].sort((a, b) => (a === miCorreo) - (b === miCorreo));
+      for (const correo of correos) {
+        const activa = aviso.para === correo;
+        const texto = correo === miCorreo ? "Para mí" : "Para " + personas.get(correo).nombre;
+        acciones.append(pildora("persona", texto, () => cambiarPara(aviso, activa ? null : correo), activa));
+      }
     }
     li.append(acciones);
 
@@ -674,6 +695,19 @@ async function cambiarVence(aviso, valor) {
     return;
   }
   cargar();
+}
+
+// «Te toca a ti»: la base apunta el evento y `Notificar` avisa a esa persona (si no es uno mismo)
+async function cambiarPara(aviso, correo) {
+  const r = await actualizarAviso(aviso.id, { para: correo }, "pasar el aviso");
+  if (r) {
+    estado(r.fallo);
+    if (r.desaparecido) cargar();
+    return;
+  }
+  await cargar(); // va antes: cargar() limpia la línea de estado
+  const p = correo && correo !== miCorreo ? persona(correo) : null;
+  if (p) estado("Se lo pasaste a " + p.nombre + ": le llegará un aviso.", "ok");
 }
 
 // Una hora sin fecha es para hoy, o para mañana si esa hora ya pasó
