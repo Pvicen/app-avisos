@@ -112,6 +112,15 @@
     </div>
 
     <form id="form-nuevo" class="compositor">
+      <!-- Escribir como hablas: lo que se entendió de la fecha y la hora, antes de guardar -->
+      <div id="vista-previa" class="vista-previa oculto" aria-live="polite">
+        <svg class="ic" aria-hidden="true"><use href="#i-calendario"></use></svg>
+        <span id="vista-previa-chip" class="chip"></span>
+        <span id="vista-previa-texto" class="vista-previa-texto"></span>
+        <button type="button" id="vista-previa-quitar" class="vista-previa-quitar" aria-label="Guardar sin fecha" title="Guardar sin fecha">
+          <svg class="ic" aria-hidden="true"><use href="#i-x"></use></svg>
+        </button>
+      </div>
       <div class="compositor-interior">
         <input id="texto" type="text" placeholder="Escribe un aviso…" autocomplete="off" maxlength="500" enterkeyhint="send" required>
         <button type="submit" class="boton-mas" aria-label="Agregar aviso" title="Agregar">
@@ -180,6 +189,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js" integrity="sha384-yiVMs0R/Jyz7OhoXa/DsEMUSBLjEhr/QJta2ONO+zB6I8/GmNg/7AUFrZmAJV7KV" crossorigin="anonymous"></script>
   <script src="config.js"></script>
+  <script src="interpretar.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

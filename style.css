@@ -473,8 +473,53 @@ textarea.editar-nota { resize: vertical; }
     calc(env(safe-area-inset-bottom) + 12px)
     calc(env(safe-area-inset-left) + 16px);
   background: var(--fondo);
+  flex-direction: column;
+  align-items: center;
 }
 .compositor-interior { width: 100%; max-width: 520px; display: flex; gap: 10px; align-items: center; }
+
+/* Escribir como hablas: la fecha y la hora entendidas, encima de la barra */
+.vista-previa {
+  width: 100%;
+  max-width: 520px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 5px 5px 5px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--borde);
+  background: var(--tarjeta);
+  box-shadow: var(--sombra);
+}
+.vista-previa > .ic { flex: none; width: 17px; height: 17px; color: var(--acento); }
+.vista-previa .chip { flex: none; }
+.vista-previa-texto {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--suave);
+  font-size: 14px;
+  font-weight: 700;
+}
+.vista-previa-quitar {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--suave);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.vista-previa-quitar .ic { width: 18px; height: 18px; }
+.vista-previa-quitar:hover { color: var(--acento); }
+#pantalla-app.con-vista-previa { padding-bottom: calc(env(safe-area-inset-bottom) + 152px); }
 
 #texto {
   flex: 1;

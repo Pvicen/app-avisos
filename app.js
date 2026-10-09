@@ -17,6 +17,10 @@ const ui = {
   btnAyudaIOS: $("#btn-ayuda-ios"),
   formNuevo: $("#form-nuevo"),
   texto: $("#texto"),
+  vistaPrevia: $("#vista-previa"),
+  vistaPreviaChip: $("#vista-previa-chip"),
+  vistaPreviaTexto: $("#vista-previa-texto"),
+  vistaPreviaQuitar: $("#vista-previa-quitar"),
   lista: $("#lista"),
   vacio: $("#vacio"),
   btnNotif: $("#btn-notif"),
@@ -155,6 +159,7 @@ async function init() {
   const borrador = sessionStorage.getItem("borradorCompartido");
   if (borrador && !ui.texto.value) {
     ui.texto.value = borrador; // queda listo en la barra; se revisa y se pulsa +
+    actualizarVistaPrevia();
   }
 
   // Prueba local del panel con datos inventados: ni sesión ni Supabase
@@ -1733,23 +1738,62 @@ ui.formLogin.addEventListener("submit", async (e) => {
   entrarApp(data.session);
 });
 
+// ---------- Escribir como hablas ----------
+// interpretar.js (cargado antes que este archivo) saca la fecha y la hora del texto de la barra.
+// Se enseña antes de guardar; con ✕ el aviso se guarda tal cual, hasta vaciar la barra.
+
+let interpretacionDescartada = false;
+
+function interpretarBarra(texto) {
+  if (interpretacionDescartada || typeof interpretarAviso !== "function") return null;
+  return interpretarAviso(texto, new Date());
+}
+
+function actualizarVistaPrevia() {
+  const texto = ui.texto.value.trim();
+  if (!texto) interpretacionDescartada = false;
+  const r = texto ? interpretarBarra(texto) : null;
+  const info = r && infoVence(r.vence, r.hora);
+  mostrar(ui.vistaPrevia, Boolean(info));
+  ui.app.classList.toggle("con-vista-previa", Boolean(info));
+  if (!info) return;
+  ui.vistaPreviaChip.className = "chip " + info.clase;
+  ui.vistaPreviaChip.textContent = info.texto;
+  ui.vistaPreviaTexto.textContent = r.texto;
+  ui.vistaPreviaTexto.title = "Se guardará como: " + r.texto;
+}
+
+// mousedown sin efecto: así tocar ✕ no le quita el foco a la barra (ni cierra el teclado)
+ui.vistaPreviaQuitar.addEventListener("mousedown", (e) => e.preventDefault());
+ui.vistaPreviaQuitar.addEventListener("click", () => {
+  interpretacionDescartada = true;
+  actualizarVistaPrevia();
+  ui.texto.focus();
+});
+
 ui.formNuevo.addEventListener("submit", async (e) => {
   e.preventDefault();
   const texto = ui.texto.value.trim();
   if (!texto) return;
+  // Se vuelve a interpretar al guardar: «a las 6» depende de la hora que sea ahora
+  const r = interpretarBarra(texto);
+  const fila = r ? { texto: r.texto, vence: r.vence, hora: r.hora } : { texto };
   ui.texto.value = "";
-  const { error } = await sb.from("avisos").insert({ texto });
+  actualizarVistaPrevia();
+  const { error } = await sb.from("avisos").insert(fila);
   if (error) {
     estado("No se pudo agregar: " + error.message);
     ui.texto.value = texto;
+    actualizarVistaPrevia();
     return;
   }
   sessionStorage.removeItem("borradorCompartido");
   cargar();
 });
 
-// Si el usuario retoca un texto compartido, mantener el borrador al día
 ui.texto.addEventListener("input", () => {
+  actualizarVistaPrevia();
+  // Si el usuario retoca un texto compartido, mantener el borrador al día
   if (sessionStorage.getItem("borradorCompartido") !== null) {
     sessionStorage.setItem("borradorCompartido", ui.texto.value);
   }

@@ -4,7 +4,7 @@
 //
 // Convenio: sube el número de CACHE ("avisos-v3", ...) si cambias cualquier
 // URL de ASSETS o CDN_URL (p. ej. al subir la versión fijada de supabase-js).
-const CACHE = "avisos-v7";
+const CACHE = "avisos-v8";
 const CDN_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.4/dist/umd/supabase.min.js";
 // KaTeX (fórmulas del panel) no se precarga: solo lo baja quien tiene panel. Va en su propia
 // caché, con la versión en el nombre, para que sobreviva a las versiones nuevas de la app.
@@ -15,6 +15,7 @@ const ASSETS = [
   "./index.html",
   "./style.css",
   "./app.js",
+  "./interpretar.js",
   "./config.js",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
