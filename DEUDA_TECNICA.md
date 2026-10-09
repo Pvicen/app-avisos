@@ -20,6 +20,14 @@ Nada de esto es bloqueante ni pone en riesgo datos o seguridad.
 - **Notificaciones sin autoría.** Llegan a todos los dispositivos de todas las personas,
   sin decir quién anotó el aviso.
 
+## «Te toca a ti»: la interfaz (2026-10-09)
+
+- **«Para ti» y «Hoy» pueden salir del mismo color** si a esa persona le toca el coral (el color
+  de cada persona es el de su inicial).
+- **Con más de dos personas** salen tantas píldoras «Para …» como personas; no hay un selector.
+- **Escribir como hablas no entiende «para Ana»**: se pasa con la píldora.
+- **El widget solo lo enseña**; pasar un aviso a alguien se hace desde la app.
+
 ## «Te toca a ti» y «terminado»: la cola y `Notificar` (2026-10-09)
 
 - **Hasta un minuto de retraso.** Los eventos salen en la vuelta de cada minuto de `Notificar`.

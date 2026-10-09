@@ -139,8 +139,24 @@ una Edge Function en Supabase que revisa cada minuto y envía el push. Configura
 La función trabaja en **hora de España** y notifica **una vez por aviso**: los que tienen
 fecha y no hora, el día en que vencen desde las 9:00; los que tienen hora, a esa hora (con
 hasta un minuto de retraso), y no en el aviso de las 9:00. Si se le cambia la fecha o la hora,
-vuelve a sonar. Las notificaciones llegan a todos los dispositivos donde se activó la 🔔.
+vuelve a sonar. Las notificaciones de vencimiento llegan a todos los dispositivos donde se activó
+la 🔔; las de [«te toca a ti»](#te-toca-a-ti), solo a los de la persona que corresponde.
 La llave pública VAPID va en `config.js`; la privada solo vive en los secretos de Supabase.
+
+## Te toca a ti
+
+Con más de una persona en la app, al tocar un aviso aparecen **«Para Ana»** y **«Para mí»**: el
+aviso queda con la etiqueta «Para ti» / «Para Ana» (en el color de esa persona, también en el
+widget) y el saludo cuenta cuántos son para ti. Tocar otra vez la píldora activa lo quita.
+
+- Al pasarle un aviso a otra persona, **le llega una notificación**: «👉 Te toca: comprar pan ·
+  Te lo pasó Vicente».
+- Cuando alguien termina un aviso que **anotó otra persona o que le tocaba a otra**, a esa otra le
+  llega «✅ Vicente terminó: comprar pan». Lo que uno anota y termina él mismo no avisa a nadie.
+- Las envía `Notificar` en su vuelta de cada minuto, solo a los dispositivos de esa persona (donde
+  activó la 🔔). Necesita la migración
+  [`setup/migraciones/2026-10-09-te-toca.sql`](setup/migraciones/2026-10-09-te-toca.sql) y su
+  prueba [`setup/pruebas/te-toca.md`](setup/pruebas/te-toca.md).
 
 ## Escribir como hablas
 

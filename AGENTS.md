@@ -85,7 +85,7 @@ Antes de programar, cada Caja se clasifica. **Ante la duda, es crítica.**
 | Escribir como hablas | `interpretar.js` | `interpretarAviso(texto, ahora)` → `{ texto, vence, hora }` o null (cabecera del archivo) |
 | Cáscara PWA | `sw.js`, `manifest.webmanifest`, `icons/` | Lista `ASSETS` y número `CACHE` de `sw.js` |
 | BD | `setup/supabase.sql` y `setup/migraciones/` (en orden) | Cabecera «Contrato de datos» de `setup/migraciones/2026-09-25-app-compartida.sql` |
-| Notificaciones | `supabase/functions/notificar/` (`index.ts` y las reglas en `reglas.mjs`) | Lee `avisos` y `push_suscripciones` con la service role; columnas `hora`/`notificado_hora` de `setup/migraciones/2026-10-08-hora.sql` |
+| Notificaciones | `supabase/functions/notificar/` (`index.ts` y las reglas en `reglas.mjs`) | Lee `avisos` y `push_suscripciones` con la service role; columnas `hora`/`notificado_hora` de `setup/migraciones/2026-10-08-hora.sql`; cola `avisos_eventos` de `setup/migraciones/2026-10-09-te-toca.sql` |
 | Configuración | `config.js` | Solo claves públicas: URL, clave anon y llave VAPID pública |
 | Panel | `supabase/functions/panel-subir/`, la tabla `panel` y su vista en `app.js` | Contratos C1, C2 y C3 de `docs/panel-contrato.md` |
 
