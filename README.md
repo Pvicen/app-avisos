@@ -6,7 +6,9 @@ instante en los demás; lo marcas como hecho y pasa al historial en todos. Al to
 aviso aparecen sus opciones: editarlo, agregarle una nota, marcarlo como importante (sube
 al principio con una franja coral) y ponerle fecha límite (se destaca cuando está por
 vencer) y, si hace falta, una hora exacta («Hoy · 18:00»: la notificación suena a esa hora).
-Cada aviso muestra quién lo anotó y el historial quién lo hizo; desde ahí se
+La fecha y la hora también se pueden escribir (o dictar) en el propio aviso: «comprar pan
+mañana a las 6» se guarda como «comprar pan» para mañana a las 18:00 (ver
+[Escribir como hablas](#escribir-como-hablas)). Cada aviso muestra quién lo anotó y el historial quién lo hizo; desde ahí se
 puede devolver a pendientes (o usar el "Deshacer" rápido). También avisa con
 notificaciones cuando algo vence (🔔).
 
@@ -139,6 +141,26 @@ fecha y no hora, el día en que vencen desde las 9:00; los que tienen hora, a es
 hasta un minuto de retraso), y no en el aviso de las 9:00. Si se le cambia la fecha o la hora,
 vuelve a sonar. Las notificaciones llegan a todos los dispositivos donde se activó la 🔔.
 La llave pública VAPID va en `config.js`; la privada solo vive en los secretos de Supabase.
+
+## Escribir como hablas
+
+Al escribir un aviso en la barra (o dictarlo con el micrófono del teclado), la app busca la
+fecha y la hora en el texto y las enseña encima de la barra antes de guardar: «📅 Mañana ·
+18:00 · comprar pan». Al pulsar **+**, el aviso se guarda sin esas palabras y con su fecha y
+hora. La **✕** de esa vista previa lo guarda tal cual, sin fecha. Todo se interpreta en el
+dispositivo ([`interpretar.js`](interpretar.js)); el texto no se manda a ningún servicio.
+
+- **Días:** hoy, mañana, pasado mañana, en 3 días, dentro de una semana, el lunes (el próximo;
+  si hoy es lunes, el de la semana que viene), el 15, el 15 de octubre, 15/10.
+- **Horas:** a las 18:30, a las 6 y media, y cuarto, menos cuarto, de la mañana / de la tarde /
+  de la noche, 6pm, a mediodía (12:00), por la mañana (9:00), por la tarde (17:00), por la
+  noche (21:00), esta tarde, esta noche.
+- **«A las 6» a secas:** de la 1 a las 7 es por la tarde; de las 8 a las 12, por la mañana
+  (para las 8 de la tarde, dilo: «a las 8 de la tarde» o «a las 20»). Con un cero delante
+  («a las 07:30») es la hora tal cual.
+- **Una hora sin día** es para hoy, o para mañana si ya pasó.
+
+El botón **+** del widget de Android guarda el texto tal cual (no lo interpreta).
 
 ## Compartir → Aviso (Android)
 

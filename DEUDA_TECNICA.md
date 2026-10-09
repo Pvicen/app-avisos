@@ -20,6 +20,21 @@ Nada de esto es bloqueante ni pone en riesgo datos o seguridad.
 - **Notificaciones sin autoría.** Llegan a todos los dispositivos de todas las personas,
   sin decir quién anotó el aviso.
 
+## Escribir como hablas (2026-10-09)
+
+- **«A las 8» es por la mañana.** Por la regla decidida (de la 1 a las 7, tarde; de las 8 a las
+  12, tal cual), «cenar a las 8» sale a las 8:00. La vista previa lo enseña antes de guardar;
+  hay que decir «de la tarde» o «a las 20».
+- **Falsos positivos.** Una frase como «dar de comer a las 2 gatas» se lee como 14:00. Para eso
+  está la vista previa con su ✕.
+- **La ✕ vale hasta vaciar la barra.** Si después de tocarla se sigue escribiendo una fecha, ya
+  no se interpreta; hay que borrar y empezar de nuevo.
+- **Lo que no entiende:** «la semana que viene», «a fin de mes», «todos los lunes» (avisos que se
+  repiten) ni días festivos. Solo en español.
+- **El widget no interpreta.** Su botón + guarda el texto tal cual.
+- **Reloj del dispositivo.** «Hoy», «mañana» y «ya pasó» usan la fecha y la hora del teléfono o
+  del PC (los dos en España).
+
 ## Hora exacta: la función `Notificar` (2026-10-08)
 
 - **Puede llegar hasta un minuto tarde.** El cron la llama cada minuto: un aviso de las 18:00 suena

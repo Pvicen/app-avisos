@@ -6,4 +6,5 @@ exclude:
   - DEUDA_TECNICA.md
   - docs/
   - setup/
+  - supabase/
   - _config.yml
