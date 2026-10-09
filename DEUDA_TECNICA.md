@@ -20,6 +20,18 @@ Nada de esto es bloqueante ni pone en riesgo datos o seguridad.
 - **Notificaciones sin autoría.** Llegan a todos los dispositivos de todas las personas,
   sin decir quién anotó el aviso.
 
+## Resumen del lunes (2026-10-09)
+
+- **Coincide con el aviso de las 9:00.** El lunes a las 9:00 pueden llegar a la vez el resumen y
+  los avisos que vencen ese día.
+- **Solo los lunes.** Si `Notificar` estuviera parada todo el lunes, esa semana no hay resumen
+  (no se recupera el martes).
+- **«Para ti» cuenta todos tus pendientes**, no solo los de esta semana.
+- **Lo hecho sale de `completado_en`.** Lo que se borró del historial («Vaciar historial») antes del
+  lunes ya no cuenta, y lo que se completó y se devolvió a pendientes tampoco.
+- **La prueba manual depende del comando del cron** (que su cuerpo sea `'{}'::jsonb`); si no, lo
+  dice y no hace nada.
+
 ## «Te toca a ti»: la interfaz (2026-10-09)
 
 - **«Para ti» y «Hoy» pueden salir del mismo color** si a esa persona le toca el coral (el color

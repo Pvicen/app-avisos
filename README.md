@@ -158,6 +158,35 @@ widget) y el saludo cuenta cuántos son para ti. Tocar otra vez la píldora acti
   [`setup/migraciones/2026-10-09-te-toca.sql`](setup/migraciones/2026-10-09-te-toca.sql) y su
   prueba [`setup/pruebas/te-toca.md`](setup/pruebas/te-toca.md).
 
+## Resumen del lunes
+
+Cada lunes desde las 9:00 (hora de España), `Notificar` le envía a cada persona, a sus
+dispositivos con la 🔔, un resumen de la semana:
+
+> **📋 Semana del 12 oct**
+> Esta semana: 5 con fecha · 1 vencido · 2 para ti.
+> La semana pasada hicisteis 12 (Ana 7, tú 5).
+
+Llega aunque la semana esté vacía («Semana tranquila: nada con fecha»). Se envía una sola vez por
+lunes y persona: lo apunta en la tabla de la migración
+[`setup/migraciones/2026-10-09-resumen.sql`](setup/migraciones/2026-10-09-resumen.sql).
+
+Para probarlo sin esperar al lunes, en el SQL Editor (llama a `Notificar` con el mismo comando y el
+mismo secreto que el cron, sin enseñarlo, y le pide el resumen ya, marcado «(prueba)» y sin
+apuntarlo):
+
+```sql
+do $$
+declare c text;
+begin
+  select command into c from cron.job where jobname = 'avisos-notificar';
+  if position('''{}''::jsonb' in c) = 0 then
+    raise exception 'El cron no manda el cuerpo {}: no se puede pedir la prueba así.';
+  end if;
+  execute replace(c, '''{}''::jsonb', '''{"resumen":"prueba"}''::jsonb');
+end $$;
+```
+
 ## Escribir como hablas
 
 Al escribir un aviso en la barra (o dictarlo con el micrófono del teclado), la app busca la
