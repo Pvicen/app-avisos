@@ -7,7 +7,10 @@ import {
   ahoraEnEspana,
   cuerpoDelAviso,
   debeSonar,
+  MAX_INTENTOS_EVENTO,
+  mensajeDeEvento,
   repartir,
+  repartirEventos,
   yaSono,
 } from "../../supabase/functions/notificar/reglas.mjs";
 
@@ -206,4 +209,136 @@ test("vuelta: si falla la lectura de avisos, la vuelta falla (la función respon
     throw new Error("sin conexión");
   };
   await assert.rejects(repartir(e), /sin conexión/);
+});
+
+// ---------- «Te toca a ti» y «terminado» ----------
+
+const ANA = "ana@ejemplo.com";
+const BETO = "beto@ejemplo.com";
+const NOMBRES = new Map([[ANA, "Ana"], [BETO, "Beto"]]);
+const AHORA_MS = Date.parse("2026-10-09T18:00:00Z");
+
+function evento(cambios = {}) {
+  return {
+    id: 1,
+    tipo: "te_toca",
+    aviso_id: "a1",
+    texto: "Comprar pan",
+    quien: BETO,
+    para: ANA,
+    creado_en: "2026-10-09T17:59:30Z",
+    intentos: 0,
+    ...cambios,
+  };
+}
+
+test("mensajes: te toca y terminado, con el nombre de quien lo hizo", () => {
+  assert.deepEqual(mensajeDeEvento(evento(), NOMBRES), {
+    titulo: "👉 Te toca: Comprar pan",
+    cuerpo: "Te lo pasó Beto",
+    tag: "te-toca-a1",
+  });
+  assert.deepEqual(mensajeDeEvento(evento({ tipo: "terminado", quien: ANA, para: BETO }), NOMBRES), {
+    titulo: "✅ Ana terminó: Comprar pan",
+    cuerpo: "Ya está hecho",
+    tag: "terminado-a1",
+  });
+  // Sin quien (desde el SQL Editor) o alguien que ya no está en personas
+  assert.equal(mensajeDeEvento(evento({ quien: null }), NOMBRES).cuerpo, "Te lo pasaron");
+  assert.equal(mensajeDeEvento(evento({ tipo: "terminado", quien: null }), NOMBRES).titulo, "✅ Terminado: Comprar pan");
+  assert.equal(mensajeDeEvento(evento({ quien: "carla@ejemplo.com" }), NOMBRES).cuerpo, "Te lo pasó carla");
+});
+
+function entornoEventos({ eventos = [], subs = [], reservar = () => true, enviar = () => "ok" } = {}) {
+  const log = { reservados: [], devueltos: [], enviados: [], borradas: [], leyoSubs: false };
+  const e = {
+    ahoraMs: AHORA_MS,
+    leerEventos: async () => eventos,
+    leerSuscripciones: async () => {
+      log.leyoSubs = true;
+      return subs;
+    },
+    leerPersonas: async () => [...NOMBRES].map(([correo, nombre]) => ({ correo, nombre })),
+    reservarEvento: async (ev) => {
+      log.reservados.push(ev.id);
+      return reservar(ev);
+    },
+    devolverEvento: async (ev) => log.devueltos.push(ev.id),
+    enviar: async (s, mensaje) => {
+      log.enviados.push({ endpoint: s.endpoint, titulo: mensaje.titulo });
+      return enviar(s, mensaje);
+    },
+    borrarSuscripcion: async (endpoint) => log.borradas.push(endpoint),
+  };
+  return { e, log };
+}
+
+const SUBS_PAREJA = [
+  { endpoint: "https://push.ejemplo/ana-movil", datos: {}, correo: ANA },
+  { endpoint: "https://push.ejemplo/beto-movil", datos: {}, correo: BETO },
+  { endpoint: "https://push.ejemplo/beto-pc", datos: {}, correo: BETO },
+];
+
+test("eventos: sin cola no mira ni los dispositivos", async () => {
+  const { e, log } = entornoEventos({ subs: SUBS_PAREJA });
+  assert.deepEqual(await repartirEventos(e), { eventos: 0 });
+  assert.equal(log.leyoSubs, false);
+});
+
+test("eventos: cada uno va solo a los dispositivos de su destinatario", async () => {
+  const eventos = [evento(), evento({ id: 2, tipo: "terminado", quien: ANA, para: BETO, aviso_id: "a2" })];
+  const { e, log } = entornoEventos({ eventos, subs: SUBS_PAREJA });
+  assert.deepEqual(await repartirEventos(e), { eventos: 2, enviadas: 3, fallos: 0, descartados: 0 });
+  assert.deepEqual(log.enviados, [
+    { endpoint: "https://push.ejemplo/ana-movil", titulo: "👉 Te toca: Comprar pan" },
+    { endpoint: "https://push.ejemplo/beto-movil", titulo: "✅ Ana terminó: Comprar pan" },
+    { endpoint: "https://push.ejemplo/beto-pc", titulo: "✅ Ana terminó: Comprar pan" },
+  ]);
+  assert.deepEqual(log.devueltos, []);
+});
+
+test("eventos: si otra vuelta ya lo reservó, no se envía", async () => {
+  const { e, log } = entornoEventos({ eventos: [evento()], subs: SUBS_PAREJA, reservar: () => false });
+  assert.deepEqual(await repartirEventos(e), { eventos: 1, enviadas: 0, fallos: 0, descartados: 0 });
+  assert.deepEqual(log.enviados, []);
+});
+
+test("eventos: los viejos y los que fallaron demasiado se descartan sin enviar", async () => {
+  const eventos = [
+    evento({ creado_en: "2026-10-09T05:59:00Z" }), // 12 h y 1 min
+    evento({ id: 2, intentos: MAX_INTENTOS_EVENTO }),
+    evento({ id: 3, creado_en: "2026-10-09T06:01:00Z", intentos: MAX_INTENTOS_EVENTO - 1 }),
+  ];
+  const { e, log } = entornoEventos({ eventos, subs: SUBS_PAREJA });
+  assert.deepEqual(await repartirEventos(e), { eventos: 3, enviadas: 1, fallos: 0, descartados: 2 });
+  assert.deepEqual(log.reservados, [1, 2, 3]); // reservados = marcados: no se vuelven a mirar
+});
+
+test("eventos: sin dispositivos del destinatario queda marcado, sin reintentos", async () => {
+  const { e, log } = entornoEventos({ eventos: [evento()], subs: SUBS_PAREJA.slice(1) });
+  assert.deepEqual(await repartirEventos(e), { eventos: 1, enviadas: 0, fallos: 0, descartados: 0 });
+  assert.deepEqual(log.enviados, []);
+  assert.deepEqual(log.devueltos, []);
+});
+
+test("eventos: si falla en todos sus dispositivos, se devuelve para reintentar", async () => {
+  const { e, log } = entornoEventos({ eventos: [evento()], subs: SUBS_PAREJA, enviar: () => "fallo" });
+  assert.deepEqual(await repartirEventos(e), { eventos: 1, enviadas: 0, fallos: 1, descartados: 0 });
+  assert.deepEqual(log.devueltos, [1]);
+});
+
+test("eventos: un dispositivo muerto se borra una vez y no se reintenta", async () => {
+  const eventos = [
+    evento({ tipo: "terminado", quien: ANA, para: BETO }),
+    evento({ id: 2, tipo: "terminado", quien: ANA, para: BETO, aviso_id: "a2" }),
+  ];
+  const { e, log } = entornoEventos({
+    eventos,
+    subs: SUBS_PAREJA,
+    enviar: (s) => (s.endpoint.endsWith("beto-pc") ? "muerta" : "ok"),
+  });
+  assert.deepEqual(await repartirEventos(e), { eventos: 2, enviadas: 2, fallos: 0, descartados: 0 });
+  assert.deepEqual(log.borradas, ["https://push.ejemplo/beto-pc"]);
+  assert.deepEqual(log.devueltos, []);
+  assert.equal(log.enviados.filter((x) => x.endpoint.endsWith("beto-pc")).length, 1);
 });

@@ -20,6 +20,18 @@ Nada de esto es bloqueante ni pone en riesgo datos o seguridad.
 - **Notificaciones sin autoría.** Llegan a todos los dispositivos de todas las personas,
   sin decir quién anotó el aviso.
 
+## «Te toca a ti» y «terminado»: la cola y `Notificar` (2026-10-09)
+
+- **Hasta un minuto de retraso.** Los eventos salen en la vuelta de cada minuto de `Notificar`.
+- **Deshacer no anula el «terminado».** Si se completa un aviso y se deshace enseguida, el otro
+  recibe igual «… terminó» (el evento ya está en la cola); al volver a completarlo, otro más.
+- **La cola no se vacía.** Los eventos enviados se quedan en `avisos_eventos` (unos pocos al día);
+  se pueden borrar a mano con `delete from public.avisos_eventos where enviado_en < now() - interval '30 days';`.
+- **Eventos de más de 12 horas o con 5 envíos fallidos se descartan** (quedan marcados sin enviar).
+  Quien no tiene ningún dispositivo con la 🔔 activada no recibe nada, y su evento se da por hecho.
+- **Si se corta la función entre marcar y enviar**, ese evento no se envía (igual que los avisos
+  que vencen).
+
 ## Escribir como hablas (2026-10-09)
 
 - **«A las 8» es por la mañana.** Por la regla decidida (de la 1 a las 7, tarde; de las 8 a las

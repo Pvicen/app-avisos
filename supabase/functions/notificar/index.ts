@@ -2,6 +2,8 @@
 // La invoca pg_cron cada minuto y envía las notificaciones push de los avisos, en hora de España:
 // - con fecha y sin hora: una vez por fecha, desde las 9:00;
 // - con fecha y hora: una vez por fecha y hora, a esa hora.
+// Además envía la cola `avisos_eventos` («te toca» y «terminado») a los dispositivos de cada
+// destinatario.
 // Las reglas viven en reglas.mjs (con pruebas en setup/pruebas/); aquí solo van Supabase y el push.
 //
 // Para que dos vueltas que se pisen no envíen lo mismo, cada aviso se «reserva» antes de enviarlo:
@@ -15,7 +17,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import * as webpush from "jsr:@negrel/webpush";
-import { ahoraEnEspana, repartir } from "./reglas.mjs";
+import { ahoraEnEspana, repartir, repartirEventos } from "./reglas.mjs";
 
 type Aviso = {
   id: string;
@@ -29,7 +31,21 @@ type Aviso = {
 type Suscripcion = {
   endpoint: string;
   datos: Parameters<webpush.ApplicationServer["subscribe"]>[0];
+  correo: string | null;
 };
+
+type Evento = {
+  id: number;
+  tipo: "te_toca" | "terminado";
+  aviso_id: string;
+  texto: string;
+  quien: string | null;
+  para: string;
+  creado_en: string;
+  intentos: number;
+};
+
+type Mensaje = { titulo: string; cuerpo: string; tag: string };
 
 function json(cuerpo: unknown, status = 200): Response {
   return new Response(JSON.stringify(cuerpo), {
@@ -64,7 +80,43 @@ Deno.serve(async (req) => {
       vapidKeys,
     });
 
+    // Lo que comparten los avisos que vencen y la cola de eventos
+    const comun = {
+      leerSuscripciones: async () => {
+        const { data, error } = await sb.from("push_suscripciones").select("endpoint, datos, correo");
+        if (error) throw new Error(error.message);
+        return data ?? [];
+      },
+
+      enviar: async (s: Suscripcion, mensaje: Mensaje) => {
+        try {
+          await servidor.subscribe(s.datos).pushTextMessage(JSON.stringify(mensaje), {});
+          return "ok";
+        } catch (err) {
+          // 410/404: la suscripción caducó o el dispositivo se desuscribió → se limpia
+          if (
+            err instanceof webpush.PushMessageError &&
+            (err.isGone() || err.response.status === 404)
+          ) {
+            return "muerta";
+          }
+          console.error(
+            "Fallo push",
+            s.endpoint,
+            err instanceof webpush.PushMessageError ? err.toString() : err,
+          );
+          return "fallo";
+        }
+      },
+
+      borrarSuscripcion: async (endpoint: string) => {
+        const { error } = await sb.from("push_suscripciones").delete().eq("endpoint", endpoint);
+        if (error) console.error("No se pudo borrar la suscripción", endpoint, error.message);
+      },
+    };
+
     const resumen = await repartir({
+      ...comun,
       ahora: ahoraEnEspana(),
 
       leerAvisos: async (hoy: string) => {
@@ -74,12 +126,6 @@ Deno.serve(async (req) => {
           .is("completado_en", null)
           .not("vence", "is", null)
           .lte("vence", hoy);
-        if (error) throw new Error(error.message);
-        return data ?? [];
-      },
-
-      leerSuscripciones: async () => {
-        const { data, error } = await sb.from("push_suscripciones").select("endpoint, datos");
         if (error) throw new Error(error.message);
         return data ?? [];
       },
@@ -117,35 +163,55 @@ Deno.serve(async (req) => {
         const { error } = await consulta;
         if (error) console.error("No se pudieron devolver las marcas del aviso", a.id, error.message);
       },
+    });
 
-      enviar: async (s: Suscripcion, mensaje: { titulo: string; cuerpo: string; tag: string }) => {
-        try {
-          await servidor.subscribe(s.datos).pushTextMessage(JSON.stringify(mensaje), {});
-          return "ok";
-        } catch (err) {
-          // 410/404: la suscripción caducó o el dispositivo se desuscribió → se limpia
-          if (
-            err instanceof webpush.PushMessageError &&
-            (err.isGone() || err.response.status === 404)
-          ) {
-            return "muerta";
-          }
-          console.error(
-            "Fallo push",
-            s.endpoint,
-            err instanceof webpush.PushMessageError ? err.toString() : err,
-          );
-          return "fallo";
-        }
+    const eventos = await repartirEventos({
+      ...comun,
+      ahoraMs: Date.now(),
+
+      leerEventos: async () => {
+        const { data, error } = await sb
+          .from("avisos_eventos")
+          .select("id, tipo, aviso_id, texto, quien, para, creado_en, intentos")
+          .is("enviado_en", null)
+          .order("id")
+          .limit(50);
+        if (error) throw new Error(error.message);
+        return data ?? [];
       },
 
-      borrarSuscripcion: async (endpoint: string) => {
-        const { error } = await sb.from("push_suscripciones").delete().eq("endpoint", endpoint);
-        if (error) console.error("No se pudo borrar la suscripción", endpoint, error.message);
+      leerPersonas: async () => {
+        const { data, error } = await sb.from("personas").select("correo, nombre");
+        if (error) throw new Error(error.message);
+        return data ?? [];
+      },
+
+      // Se marca antes de enviar: si dos vueltas se pisan, solo una lo envía
+      reservarEvento: async (ev: Evento) => {
+        const { data, error } = await sb
+          .from("avisos_eventos")
+          .update({ enviado_en: new Date().toISOString() })
+          .eq("id", ev.id)
+          .is("enviado_en", null)
+          .select("id");
+        if (error) {
+          console.error("No se pudo reservar el evento", ev.id, error.message);
+          return false;
+        }
+        return (data?.length ?? 0) > 0;
+      },
+
+      devolverEvento: async (ev: Evento) => {
+        const { error } = await sb
+          .from("avisos_eventos")
+          .update({ enviado_en: null, intentos: ev.intentos + 1 })
+          .eq("id", ev.id);
+        if (error) console.error("No se pudo devolver el evento", ev.id, error.message);
       },
     });
 
-    return json(resumen);
+    // Sin eventos, la respuesta es la de siempre
+    return json(eventos.eventos ? { ...resumen, eventos } : resumen);
   } catch (err) {
     return json({ error: err instanceof Error ? err.message : String(err) }, 500);
   }
