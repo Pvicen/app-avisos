@@ -387,7 +387,8 @@ button:focus-visible, .pildora:focus-within, .campo:focus-visible {
 
 /* El calendario (o el reloj) invisible cubre toda la píldora: al tocarla se abre el selector nativo */
 .pildora input[type="date"],
-.pildora input[type="time"] {
+.pildora input[type="time"],
+.pildora select {
   position: absolute;
   inset: 0;
   width: 100%;

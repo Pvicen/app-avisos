@@ -85,6 +85,7 @@ let estadoTimer = null;
 let refrescoPospuesto = false;  // hubo un refresco mientras se editaba un aviso
 let swRegistro = null;          // promesa del registro del service worker
 let personas = new Map();       // correo → { nombre, color }; vacío si la BD no está migrada
+let lugares = new Map();        // id → nombre (avisos por lugar); vacío sin lugares o sin migrar
 let miCorreo = null;            // correo de quien usa este dispositivo
 let abiertoId = null;           // aviso con sus opciones desplegadas
 let pendientesVisibles = null;  // para el saludo (null = aún sin cargar)
@@ -216,6 +217,7 @@ function entrarApp(session) {
   actualizarBotonNotif();
   mostrarAyudaIOS();
   cargarPersonas();
+  cargarLugares();
   // El panel: primero la copia local (si es de esta cuenta), luego lo que diga Supabase
   const copia = leerCopiaPanel();
   if (copia) mostrarPanel({ datos: copia, sinConexion: false, actualizando: true });
@@ -232,6 +234,15 @@ async function cargarPersonas() {
     data.map((p, i) => [p.correo, { nombre: p.nombre, color: i % COLORES_PERSONA }])
   );
   pintarCuenta();
+  refrescarVista();
+}
+
+// ---------- Lugares (avisos por lugar; se guardan desde la app de Android) ----------
+
+async function cargarLugares() {
+  const { data, error } = await sb.from("lugares").select("id, nombre").order("nombre");
+  if (error || !data) return; // base sin migrar: la app funciona igual, sin lugares
+  lugares = new Map(data.map((l) => [l.id, l.nombre]));
   refrescarVista();
 }
 
@@ -382,6 +393,21 @@ function pildoraHora(aviso) {
   return pildoraEl;
 }
 
+// Píldora de lugar: un <select> invisible encima, con los sitios guardados desde el Android
+function pildoraLugar(aviso) {
+  const actual = aviso.lugar_id && lugares.has(aviso.lugar_id) ? aviso.lugar_id : "";
+  const pildoraEl = document.createElement("label");
+  pildoraEl.className = "pildora" + (actual ? " activa" : "");
+  const select = document.createElement("select");
+  select.setAttribute("aria-label", "Lugar del aviso");
+  select.append(new Option("Sin lugar", ""));
+  for (const [id, nombre] of lugares) select.append(new Option(nombre, id));
+  select.value = actual;
+  select.addEventListener("change", () => cambiarLugar(aviso, select.value || null));
+  pildoraEl.append(icono("lugar"), document.createTextNode(actual ? lugares.get(actual) : "Lugar"), select);
+  return pildoraEl;
+}
+
 // En PC con ratón, un clic sobre el campo no abre el selector por sí solo
 function abrirSelectorEnPC(input) {
   if (!window.matchMedia("(pointer: fine)").matches) return;
@@ -444,6 +470,13 @@ function render(avisos) {
     const chips = document.createElement("div");
     chips.className = "chips";
     // «Te toca a ti»: a quién le toca, con el color de esa persona
+    // Avisos por lugar: «📍 Súper» (si el lugar ya no existe, no se pinta)
+    if (aviso.lugar_id && lugares.has(aviso.lugar_id)) {
+      const chip = document.createElement("span");
+      chip.className = "chip normal";
+      chip.textContent = "📍 " + lugares.get(aviso.lugar_id);
+      chips.append(chip);
+    }
     if (aviso.para && conAutores) {
       const p = persona(aviso.para);
       const chip = document.createElement("span");
@@ -479,6 +512,7 @@ function render(avisos) {
       pildoraFecha(aviso),
       pildoraHora(aviso)
     );
+    if (lugares.size > 0) acciones.append(pildoraLugar(aviso));
     if (aviso.vence) {
       acciones.append(pildora("x", "Sin fecha", () => cambiarVence(aviso, "")));
     }
@@ -689,6 +723,17 @@ async function cambiarVence(aviso, valor) {
   // Sin fecha, la hora no cuenta: se quita también
   const cambios = valor ? { vence: valor } : { vence: null, hora: null };
   const r = await actualizarAviso(aviso.id, cambios, "cambiar la fecha");
+  if (r) {
+    estado(r.fallo);
+    if (r.desaparecido) cargar();
+    return;
+  }
+  cargar();
+}
+
+// Avisos por lugar: el Android de quien tenga la app vigila el sitio y avisa al llegar
+async function cambiarLugar(aviso, id) {
+  const r = await actualizarAviso(aviso.id, { lugar_id: id }, "cambiar el lugar");
   if (r) {
     estado(r.fallo);
     if (r.desaparecido) cargar();
@@ -961,6 +1006,11 @@ function suscribir() {
       "postgres_changes",
       { event: "*", schema: "public", table: "avisos" },
       () => refrescarVista()
+    )
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "lugares" },
+      () => cargarLugares()
     )
     .subscribe((status) => {
       if (status === "SUBSCRIBED") {
