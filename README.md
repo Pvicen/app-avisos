@@ -165,7 +165,10 @@ Para que un aviso salte **al llegar a un sitio** («comprar pan» al llegar al s
 1. En la app de Android del widget ([Pvicen/avisos-widget](https://github.com/Pvicen/avisos-widget)),
    **Lugares** → **Dar permiso** (ubicación «Permitir todo el tiempo» y notificaciones).
 2. Estando en el sitio, escribe su nombre y pulsa **Guardar dónde estoy**. Si el nombre ya existe,
-   ofrece moverlo a donde estás.
+   ofrece moverlo a donde estás. **Sin estar allí:** búscalo en Google Maps (o ábrelo en Mundi),
+   pulsa **Compartir** y elige **«Avisos: guardar lugar»**: sale con su nombre y su punto, y si
+   escribes qué hacer allí, crea también el aviso con ese lugar. Vale cualquier app que comparta un
+   enlace de mapa con coordenadas (`https://maps.google.com/?q=LAT,LON`).
 3. En la app web, al tocar un aviso, la píldora **Lugar** deja elegirlo; el aviso lleva la etiqueta
    «📍 Súper» (también en el widget).
 
