@@ -387,8 +387,7 @@ button:focus-visible, .pildora:focus-within, .campo:focus-visible {
 
 /* El calendario (o el reloj) invisible cubre toda la píldora: al tocarla se abre el selector nativo */
 .pildora input[type="date"],
-.pildora input[type="time"],
-.pildora select {
+.pildora input[type="time"] {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -627,8 +626,18 @@ dialog.hoja::backdrop { background: var(--velo); }
 #dlg-clave { width: calc(100% - 24px); max-width: 480px; margin: calc(env(safe-area-inset-top) + 16px) auto auto; }
 #dlg-clave .hoja-interior { border-radius: 26px; padding-bottom: 18px; }
 
+/* Agregar lugar también va arriba (tiene buscador) y puede ser más alta que la pantalla */
+#dlg-nuevo-lugar { width: calc(100% - 24px); max-width: 480px; margin: calc(env(safe-area-inset-top) + 12px) auto auto; }
+#dlg-nuevo-lugar .hoja-interior {
+  border-radius: 26px;
+  padding-bottom: 14px;
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+}
+
 @media (min-width: 600px) {
-  dialog.hoja, #dlg-clave { margin: auto; max-width: 400px; }
+  dialog.hoja, #dlg-clave, #dlg-nuevo-lugar { margin: auto; max-width: 400px; }
+  #dlg-nuevo-lugar { max-width: 460px; }
   .hoja-interior { border-radius: 26px; padding-bottom: 18px; }
 }
 
@@ -657,6 +666,94 @@ dialog.hoja::backdrop { background: var(--velo); }
 
 .hoja-botones { display: flex; gap: 10px; margin-top: 4px; }
 .hoja-botones > * { flex: 1; }
+
+/* ---------- Lugares: elegir y agregar ---------- */
+
+.lista-lugares { list-style: none; margin: 10px 0 14px; padding: 0; display: grid; gap: 8px; }
+.fila-lugar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 4px;
+  border: 1px solid var(--borde);
+  border-radius: 16px;
+  background: var(--fondo);
+}
+.fila-lugar.elegida { border: 2px solid var(--acento); background: var(--chip-hoy-fondo); }
+.fila-lugar-elegir {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border: none;
+  background: none;
+  color: var(--texto);
+  font-size: 16px;
+  font-weight: 700;
+  text-align: left;
+}
+.fila-lugar-elegir .ic { flex: none; width: 20px; height: 20px; color: var(--acento); }
+.fila-lugar.elegida .fila-lugar-elegir { color: var(--chip-hoy-texto); }
+.fila-lugar.elegida .fila-lugar-elegir .ic { color: var(--chip-hoy-texto); }
+.fila-lugar-nombre { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fila-lugar .icono { width: 38px; height: 38px; }
+.fila-lugar .icono .ic { width: 19px; height: 19px; }
+
+.boton-agregar-lugar { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.boton-agregar-lugar .ic { width: 20px; height: 20px; }
+
+.buscar-lugar { display: flex; gap: 8px; margin: 12px 0 8px; }
+.buscar-lugar .campo { flex: 1; min-width: 0; }
+.boton-buscar {
+  flex: none;
+  width: 50px;
+  height: 50px;
+  border: none;
+  border-radius: 14px;
+  background: var(--acento-boton);
+  color: var(--sobre-acento);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.boton-buscar .ic { width: 22px; height: 22px; }
+
+.resultados-lugar { list-style: none; margin: 0 0 10px; padding: 0; max-height: 190px; overflow-y: auto; }
+.resultados-lugar:empty { display: none; }
+.resultado-lugar + .resultado-lugar { border-top: 1px solid var(--borde); }
+.resultado-lugar button {
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 12px;
+  background: none;
+  color: var(--texto);
+  text-align: left;
+}
+.resultado-lugar button:hover { background: var(--segmento); }
+.resultado-lugar.elegido button { background: var(--chip-hoy-fondo); color: var(--chip-hoy-texto); }
+.resultado-nombre { display: block; font-size: 15px; font-weight: 800; }
+.resultado-dir { display: block; color: var(--suave); font-size: 13px; font-weight: 600; }
+.resultado-aviso { padding: 8px 12px; color: var(--suave); font-size: 14px; font-weight: 700; }
+
+.mapa-lugar {
+  height: 210px;
+  margin-bottom: 4px;
+  border: 1px solid var(--borde);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--segmento);
+  z-index: 0; /* que los controles de Leaflet no tapen el resto de la hoja */
+}
+.pincho-lugar { background: none; border: none; }
+.pincho-lugar svg { width: 36px; height: 44px; fill: var(--acento-boton); stroke: #ffffff; stroke-width: 1.4; }
+.pincho-lugar svg circle { fill: #ffffff; stroke: none; }
+#dlg-nuevo-lugar .campo { margin-bottom: 8px; }
+#dlg-nuevo-lugar .boton-suave { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+#dlg-nuevo-lugar .boton-suave .ic { width: 18px; height: 18px; }
 
 /* ---------- Pestañas Avisos | Panel (solo si hay panel) ---------- */
 

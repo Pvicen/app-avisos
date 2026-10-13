@@ -169,8 +169,12 @@ Para que un aviso salte **al llegar a un sitio** («comprar pan» al llegar al s
    pulsa **Compartir** y elige **«Avisos: guardar lugar»**: sale con su nombre y su punto, y si
    escribes qué hacer allí, crea también el aviso con ese lugar. Vale cualquier app que comparta un
    enlace de mapa con coordenadas (`https://maps.google.com/?q=LAT,LON`).
-3. En la app web, al tocar un aviso, la píldora **Lugar** deja elegirlo; el aviso lleva la etiqueta
-   «📍 Súper» (también en el widget).
+3. En la app web, al tocar un aviso, la píldora **Lugar** abre la hoja «Lugar del aviso»: elegir uno
+   de los guardados (o «Sin lugar»), abrirlo en Google Maps, borrarlo o **Agregar lugar** sin salir
+   de la app: se busca el sitio o la dirección (buscador de OpenStreetMap, en España, lo más cercano
+   primero), se afina el pincho en el mapa (o «Dónde estoy»), se le pone nombre y queda puesto en el
+   aviso. El aviso lleva la etiqueta «📍 Súper» (también en el widget). Desde la web pueden agregar
+   lugares las dos personas, también en iPhone y en el PC.
 
 Al entrar en la zona del lugar (150 m), ese Android enseña «📍 En Súper: comprar pan · leche», una
 vez por visita. Lo vigila el propio teléfono: la ubicación no sale de él; en Supabase solo están los

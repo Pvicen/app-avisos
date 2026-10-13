@@ -24,8 +24,15 @@ Nada de esto es bloqueante ni pone en riesgo datos o seguridad.
 
 - **Solo avisa el Android con la app del widget.** El iPhone ve la etiqueta «📍 …», pero una web no
   puede vigilar sitios.
-- **Los lugares se crean y se borran desde el Android.** La web solo los elige; sin lugares
-  guardados, la píldora «Lugar» no aparece.
+- **El buscador de «Agregar lugar» es el de OpenStreetMap (Nominatim)**, no el de Google: encuentra
+  bien direcciones y cadenas conocidas, peor las tiendas pequeñas (para eso, el pincho se pone a mano
+  en el mapa). Solo busca en España y como mucho una vez por segundo, como pide su política.
+- **Lo que se busca y la zona del mapa salen hacia OpenStreetMap** (su buscador y sus teselas), con
+  la dirección de la app como origen. No va ningún dato de la cuenta.
+- **El mapa (Leaflet, de jsdelivr) se baja la primera vez** que se abre «Agregar lugar»; sin conexión
+  no hay mapa ni buscador.
+- **«Moverlo aquí» con dos toques.** Si el nombre ya existe, el primer «Guardar lugar» lo avisa y el
+  segundo mueve ese lugar al punto nuevo.
 - **Escribir como hablas no entiende «en el súper»**: el lugar se pone con la píldora.
 - **Nombres en la notificación**: los avisos de ese lugar salen tal como estaban en la copia del
   teléfono (hasta ~30 min de antigüedad). El detalle de lo que no cubre está en la deuda del widget.

@@ -37,6 +37,9 @@
     <symbol id="i-panel" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="4" rx="1.5"/><rect x="13" y="10" width="7" height="10" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/></symbol>
     <symbol id="i-hoy" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.6 4.6L6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4L6 18M18 6l1.4-1.4"/></symbol>
     <symbol id="i-libro" viewBox="0 0 24 24"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v14H6.5A1.5 1.5 0 0 0 5 18.5z"/><path d="M5 18.5A1.5 1.5 0 0 0 6.5 20H19v-3"/></symbol>
+    <symbol id="i-buscar" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></symbol>
+    <symbol id="i-ubicacion" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3"/></symbol>
+    <symbol id="i-papelera" viewBox="0 0 24 24"><path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/></symbol>
     <symbol id="i-lugar" viewBox="0 0 24 24"><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/></symbol>
     <symbol id="i-persona" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/></symbol>
     <symbol id="i-reloj" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
@@ -186,6 +189,44 @@
           <button type="submit" class="boton-principal">Guardar</button>
         </div>
       </form>
+    </div>
+  </dialog>
+
+  <!-- Lugar del aviso: elegir uno guardado, quitarlo o agregar otro -->
+  <dialog id="dlg-lugar" class="hoja" aria-label="Lugar del aviso">
+    <div class="hoja-interior">
+      <p class="hoja-titulo">Lugar del aviso</p>
+      <p class="hoja-sub">Al llegar allí, te avisa el Android que tenga la app del widget.</p>
+      <ul id="lista-lugares" class="lista-lugares"></ul>
+      <button id="btn-agregar-lugar" class="boton-principal boton-agregar-lugar" type="button">
+        <svg class="ic" aria-hidden="true"><use href="#i-mas"></use></svg>Agregar lugar
+      </button>
+      <button id="btn-cerrar-lugar" class="fila-menu suave" type="button">Cerrar</button>
+    </div>
+  </dialog>
+
+  <!-- Agregar lugar: buscar (OpenStreetMap), afinar en el mapa y guardar -->
+  <dialog id="dlg-nuevo-lugar" class="hoja" aria-label="Agregar lugar">
+    <div class="hoja-interior">
+      <p class="hoja-titulo">Agregar lugar</p>
+      <form id="form-buscar-lugar" class="buscar-lugar" role="search">
+        <input id="buscar-lugar" class="campo" type="search" placeholder="Mercadona Gran Vía, Museo del Prado…" autocomplete="off" enterkeyhint="search" aria-label="Buscar un sitio o una dirección">
+        <button class="boton-buscar" type="submit" aria-label="Buscar" title="Buscar">
+          <svg class="ic" aria-hidden="true"><use href="#i-buscar"></use></svg>
+        </button>
+      </form>
+      <ul id="resultados-lugar" class="resultados-lugar" aria-live="polite"></ul>
+      <div id="mapa-lugar" class="mapa-lugar" aria-label="Mapa: toca para poner el pincho"></div>
+      <p class="hoja-sub">Toca el mapa o arrastra el pincho para afinar.</p>
+      <input id="nombre-lugar" class="campo" type="text" maxlength="40" placeholder="Nombre (p. ej. Súper)" autocomplete="off" aria-label="Nombre del lugar">
+      <p id="error-lugar" class="error oculto"></p>
+      <div class="hoja-botones">
+        <button id="btn-donde-estoy" class="boton-suave" type="button">
+          <svg class="ic" aria-hidden="true"><use href="#i-ubicacion"></use></svg>Dónde estoy
+        </button>
+        <button id="btn-guardar-lugar" class="boton-principal" type="button">Guardar lugar</button>
+      </div>
+      <button id="btn-cancelar-lugar" class="fila-menu suave" type="button">Cancelar</button>
     </div>
   </dialog>
 

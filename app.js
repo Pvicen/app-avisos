@@ -21,6 +21,20 @@ const ui = {
   vistaPreviaChip: $("#vista-previa-chip"),
   vistaPreviaTexto: $("#vista-previa-texto"),
   vistaPreviaQuitar: $("#vista-previa-quitar"),
+  dlgLugar: $("#dlg-lugar"),
+  listaLugares: $("#lista-lugares"),
+  btnAgregarLugar: $("#btn-agregar-lugar"),
+  btnCerrarLugar: $("#btn-cerrar-lugar"),
+  dlgNuevoLugar: $("#dlg-nuevo-lugar"),
+  formBuscarLugar: $("#form-buscar-lugar"),
+  buscarLugar: $("#buscar-lugar"),
+  resultadosLugar: $("#resultados-lugar"),
+  mapaLugar: $("#mapa-lugar"),
+  nombreLugar: $("#nombre-lugar"),
+  errorLugar: $("#error-lugar"),
+  btnDondeEstoy: $("#btn-donde-estoy"),
+  btnGuardarLugar: $("#btn-guardar-lugar"),
+  btnCancelarLugar: $("#btn-cancelar-lugar"),
   lista: $("#lista"),
   vacio: $("#vacio"),
   btnNotif: $("#btn-notif"),
@@ -85,7 +99,7 @@ let estadoTimer = null;
 let refrescoPospuesto = false;  // hubo un refresco mientras se editaba un aviso
 let swRegistro = null;          // promesa del registro del service worker
 let personas = new Map();       // correo → { nombre, color }; vacío si la BD no está migrada
-let lugares = new Map();        // id → nombre (avisos por lugar); vacío sin lugares o sin migrar
+let lugares = new Map();        // id → { nombre, lat, lon } (avisos por lugar); vacío sin lugares o sin migrar
 let miCorreo = null;            // correo de quien usa este dispositivo
 let abiertoId = null;           // aviso con sus opciones desplegadas
 let pendientesVisibles = null;  // para el saludo (null = aún sin cargar)
@@ -240,9 +254,10 @@ async function cargarPersonas() {
 // ---------- Lugares (avisos por lugar; se guardan desde la app de Android) ----------
 
 async function cargarLugares() {
-  const { data, error } = await sb.from("lugares").select("id, nombre").order("nombre");
+  const { data, error } = await sb.from("lugares").select("id, nombre, lat, lon").order("nombre");
   if (error || !data) return; // base sin migrar: la app funciona igual, sin lugares
-  lugares = new Map(data.map((l) => [l.id, l.nombre]));
+  lugares = new Map(data.map((l) => [l.id, { nombre: l.nombre, lat: l.lat, lon: l.lon }]));
+  if (ui.dlgLugar.open) pintarListaLugares();
   refrescarVista();
 }
 
@@ -393,19 +408,10 @@ function pildoraHora(aviso) {
   return pildoraEl;
 }
 
-// Píldora de lugar: un <select> invisible encima, con los sitios guardados desde el Android
+// Píldora de lugar: abre la hoja «Lugar del aviso» (elegir, quitar o agregar uno)
 function pildoraLugar(aviso) {
-  const actual = aviso.lugar_id && lugares.has(aviso.lugar_id) ? aviso.lugar_id : "";
-  const pildoraEl = document.createElement("label");
-  pildoraEl.className = "pildora" + (actual ? " activa" : "");
-  const select = document.createElement("select");
-  select.setAttribute("aria-label", "Lugar del aviso");
-  select.append(new Option("Sin lugar", ""));
-  for (const [id, nombre] of lugares) select.append(new Option(nombre, id));
-  select.value = actual;
-  select.addEventListener("change", () => cambiarLugar(aviso, select.value || null));
-  pildoraEl.append(icono("lugar"), document.createTextNode(actual ? lugares.get(actual) : "Lugar"), select);
-  return pildoraEl;
+  const lugar = aviso.lugar_id ? lugares.get(aviso.lugar_id) : null;
+  return pildora("lugar", lugar ? lugar.nombre : "Lugar", () => abrirElegirLugar(aviso), Boolean(lugar));
 }
 
 // En PC con ratón, un clic sobre el campo no abre el selector por sí solo
@@ -474,7 +480,7 @@ function render(avisos) {
     if (aviso.lugar_id && lugares.has(aviso.lugar_id)) {
       const chip = document.createElement("span");
       chip.className = "chip normal";
-      chip.textContent = "📍 " + lugares.get(aviso.lugar_id);
+      chip.textContent = "📍 " + lugares.get(aviso.lugar_id).nombre;
       chips.append(chip);
     }
     if (aviso.para && conAutores) {
@@ -512,7 +518,7 @@ function render(avisos) {
       pildoraFecha(aviso),
       pildoraHora(aviso)
     );
-    if (lugares.size > 0) acciones.append(pildoraLugar(aviso));
+    acciones.append(pildoraLugar(aviso));
     if (aviso.vence) {
       acciones.append(pildora("x", "Sin fecha", () => cambiarVence(aviso, "")));
     }
@@ -1039,7 +1045,7 @@ function cerrarHoja(dlg) {
 }
 
 // Tocar fuera de la hoja (en el velo) la cierra
-for (const dlg of [ui.dlgCuenta, ui.dlgClave]) {
+for (const dlg of [ui.dlgCuenta, ui.dlgClave, ui.dlgLugar, ui.dlgNuevoLugar]) {
   dlg.addEventListener("click", (e) => {
     if (e.target === dlg) cerrarHoja(dlg);
   });
@@ -1091,6 +1097,327 @@ ui.formClave.addEventListener("submit", async (e) => {
   ui.formClave.reset();
   cerrarHoja(ui.dlgClave);
   estado("Contraseña cambiada. Úsala la próxima vez que entres.", "ok");
+});
+
+// ---------- Lugares: elegir el de un aviso y agregar uno nuevo ----------
+// Todo dentro de la app. La búsqueda es la de OpenStreetMap (Nominatim: una búsqueda por envío, sin
+// autocompletar, como pide su política) y el mapa, Leaflet con las teselas de OpenStreetMap; los dos
+// se cargan solo al abrir «Agregar lugar». Desde cada lugar se puede abrir Google Maps.
+
+const LEAFLET_BASE = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/";
+const LEAFLET_JS_SRI = "sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH";
+const LEAFLET_CSS_SRI = "sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H";
+const NOMINATIM = "https://nominatim.openstreetmap.org/search";
+const CENTRO_POR_DEFECTO = [40.4168, -3.7038]; // Madrid, si aún no hay ningún lugar guardado
+// El pincho del mapa: un SVG fijo (sin datos), en el color de la app
+const PINCHO_SVG =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s-7-6.6-7-11.6a7 7 0 0 1 14 0C19 15.4 12 22 12 22z"/><circle cx="12" cy="10.2" r="2.6"/></svg>';
+
+let avisoDelLugar = null;   // el aviso al que se le está eligiendo lugar
+let leafletPromesa = null;
+let mapaLugar = null;       // { mapa, pincho } de Leaflet, creado la primera vez
+let puntoNuevo = null;      // [lat, lon] elegido en «Agregar lugar»
+let lugarRepetidoId = null; // si el nombre ya existe, su id: el segundo «Guardar» lo mueve aquí
+let ultimaBusqueda = 0;     // Nominatim: como mucho una búsqueda por segundo
+
+function urlGoogleMaps(l) {
+  return "https://www.google.com/maps/search/?api=1&query=" + l.lat + "," + l.lon;
+}
+
+function abrirElegirLugar(aviso) {
+  avisoDelLugar = aviso;
+  pintarListaLugares();
+  abrirHoja(ui.dlgLugar);
+}
+
+function pintarListaLugares() {
+  const actual = (avisoDelLugar && avisoDelLugar.lugar_id) || null;
+  const filas = [filaLugar(null, null, actual)];
+  for (const [id, l] of lugares) filas.push(filaLugar(id, l, actual));
+  ui.listaLugares.replaceChildren(...filas);
+}
+
+function filaLugar(id, lugar, actual) {
+  const elegida = id === actual;
+  const li = el("li", "fila-lugar" + (elegida ? " elegida" : ""));
+  const elegir = el("button", "fila-lugar-elegir");
+  elegir.type = "button";
+  elegir.append(icono(id ? "lugar" : "x"), el("span", "fila-lugar-nombre", id ? lugar.nombre : "Sin lugar"));
+  if (elegida) elegir.append(icono("check"));
+  elegir.addEventListener("click", () => elegirLugar(id));
+  li.append(elegir);
+  if (id) {
+    const maps = el("a", "icono");
+    maps.href = urlGoogleMaps(lugar);
+    maps.target = "_blank";
+    maps.rel = "noopener";
+    maps.title = "Abrir en Google Maps";
+    maps.setAttribute("aria-label", "Abrir " + lugar.nombre + " en Google Maps");
+    maps.append(icono("enlace"));
+    const borrar = el("button", "icono");
+    borrar.type = "button";
+    borrar.title = "Borrar lugar";
+    borrar.setAttribute("aria-label", "Borrar " + lugar.nombre);
+    borrar.append(icono("papelera"));
+    borrar.addEventListener("click", () => borrarLugar(id, lugar));
+    li.append(maps, borrar);
+  }
+  return li;
+}
+
+async function elegirLugar(id) {
+  const aviso = avisoDelLugar;
+  cerrarHoja(ui.dlgLugar);
+  if (aviso && (aviso.lugar_id || null) !== id) await cambiarLugar(aviso, id);
+}
+
+async function borrarLugar(id, lugar) {
+  if (!confirm("¿Borrar «" + lugar.nombre + "»? Sus avisos se quedan, sin lugar.")) return;
+  const { error } = await sb.from("lugares").delete().eq("id", id);
+  if (error) {
+    estado("No se pudo borrar el lugar: " + error.message);
+    return;
+  }
+  if (avisoDelLugar && avisoDelLugar.lugar_id === id) avisoDelLugar.lugar_id = null;
+  await cargarLugares();
+  cargar();
+}
+
+function cargarLeaflet() {
+  if (window.L) return Promise.resolve(true);
+  if (leafletPromesa) return leafletPromesa;
+  leafletPromesa = new Promise((resolver) => {
+    if (!document.querySelector("link[data-leaflet]")) {
+      const css = document.createElement("link");
+      css.rel = "stylesheet";
+      css.href = LEAFLET_BASE + "leaflet.css";
+      css.integrity = LEAFLET_CSS_SRI;
+      css.crossOrigin = "anonymous";
+      css.dataset.leaflet = "1";
+      document.head.append(css);
+    }
+    const js = document.createElement("script");
+    js.src = LEAFLET_BASE + "leaflet.js";
+    js.integrity = LEAFLET_JS_SRI;
+    js.crossOrigin = "anonymous";
+    js.onload = () => resolver(Boolean(window.L));
+    js.onerror = () => {
+      js.remove();
+      leafletPromesa = null; // se reintenta la próxima vez
+      resolver(false);
+    };
+    document.head.append(js);
+  });
+  return leafletPromesa;
+}
+
+function errorLugar(texto) {
+  ui.errorLugar.textContent = texto;
+  mostrar(ui.errorLugar, Boolean(texto));
+}
+
+// Donde empezar a mirar: el primer lugar guardado o, si no hay, Madrid
+function centroDeReferencia() {
+  const primero = lugares.values().next().value;
+  return primero ? [primero.lat, primero.lon] : CENTRO_POR_DEFECTO;
+}
+
+async function abrirAgregarLugar() {
+  cerrarHoja(ui.dlgLugar);
+  ui.formBuscarLugar.reset();
+  ui.nombreLugar.value = "";
+  ui.resultadosLugar.replaceChildren();
+  errorLugar("");
+  puntoNuevo = null;
+  lugarRepetidoId = null;
+  abrirHoja(ui.dlgNuevoLugar);
+  if (!(await cargarLeaflet())) {
+    errorLugar("No se pudo cargar el mapa. Comprueba la conexión y vuelve a abrirlo.");
+    return;
+  }
+  const centro = centroDeReferencia();
+  if (!mapaLugar) {
+    const mapa = L.map(ui.mapaLugar, { zoomControl: true }).setView(centro, 13);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "© OpenStreetMap",
+    }).addTo(mapa);
+    mapa.on("click", (e) => ponerPunto([e.latlng.lat, e.latlng.lng], false));
+    mapaLugar = { mapa, pincho: null };
+  } else {
+    mapaLugar.mapa.setView(centro, 13);
+  }
+  if (mapaLugar.pincho) {
+    mapaLugar.pincho.remove();
+    mapaLugar.pincho = null;
+  }
+  // La hoja acaba de abrirse: Leaflet tiene que volver a medir el contenedor
+  setTimeout(() => mapaLugar.mapa.invalidateSize(), 60);
+  ui.buscarLugar.focus();
+}
+
+function ponerPunto(punto, centrar) {
+  puntoNuevo = punto;
+  errorLugar("");
+  if (!mapaLugar.pincho) {
+    const icon = L.divIcon({ className: "pincho-lugar", html: PINCHO_SVG, iconSize: [36, 44], iconAnchor: [18, 42] });
+    mapaLugar.pincho = L.marker(punto, { draggable: true, icon }).addTo(mapaLugar.mapa);
+    mapaLugar.pincho.on("dragend", () => {
+      const p = mapaLugar.pincho.getLatLng();
+      puntoNuevo = [p.lat, p.lng];
+    });
+  } else {
+    mapaLugar.pincho.setLatLng(punto);
+  }
+  if (centrar) mapaLugar.mapa.setView(punto, 17);
+}
+
+// Distancia aproximada en línea recta, para enseñarla junto a cada resultado
+function distanciaTexto(a, b) {
+  const rad = Math.PI / 180;
+  const x = (b[1] - a[1]) * rad * Math.cos(((a[0] + b[0]) / 2) * rad);
+  const y = (b[0] - a[0]) * rad;
+  const metros = Math.sqrt(x * x + y * y) * 6371000;
+  return metros < 1000 ? Math.round(metros / 10) * 10 + " m" : (metros / 1000).toFixed(1).replace(".", ",") + " km";
+}
+
+async function buscarLugares(texto) {
+  const q = texto.trim();
+  if (!q) return;
+  if (Date.now() - ultimaBusqueda < 1100) return; // política de Nominatim
+  ultimaBusqueda = Date.now();
+  const centro = mapaLugar ? [mapaLugar.mapa.getCenter().lat, mapaLugar.mapa.getCenter().lng] : centroDeReferencia();
+  const params = new URLSearchParams({
+    q,
+    format: "jsonv2",
+    limit: "10",
+    countrycodes: "es",
+    "accept-language": "es",
+    // Prefiere lo cercano a lo que se está mirando, sin descartar lo de fuera
+    viewbox: [centro[1] - 0.4, centro[0] + 0.3, centro[1] + 0.4, centro[0] - 0.3].join(","),
+    bounded: "0",
+  });
+  ui.resultadosLugar.replaceChildren(el("li", "resultado-aviso", "Buscando…"));
+  let datos;
+  try {
+    const r = await fetch(NOMINATIM + "?" + params, { headers: { Accept: "application/json" } });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    datos = await r.json();
+  } catch {
+    ui.resultadosLugar.replaceChildren(el("li", "resultado-aviso", "No se pudo buscar. Prueba otra vez en un momento."));
+    return;
+  }
+  if (!Array.isArray(datos) || datos.length === 0) {
+    ui.resultadosLugar.replaceChildren(el("li", "resultado-aviso", "Sin resultados. Prueba con la calle o añade la ciudad."));
+    return;
+  }
+  // Lo más cercano primero (con cadenas como «Mercadona», el que pilla más a mano)
+  const cercania = (r) => Math.hypot(Number(r.lat) - centro[0], (Number(r.lon) - centro[1]) * 0.77);
+  const ordenados = [...datos].sort((a, b) => cercania(a) - cercania(b)).slice(0, 6);
+  ui.resultadosLugar.replaceChildren(...ordenados.map((r) => resultadoLugar(r, centro)));
+}
+
+function resultadoLugar(r, centro) {
+  const punto = [Number(r.lat), Number(r.lon)];
+  const partes = String(r.display_name || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const nombre = (r.name || partes[0] || "Lugar").slice(0, 40);
+  const resto = partes.filter((p) => p !== nombre).slice(0, 3).join(", ");
+  const li = el("li", "resultado-lugar");
+  const boton = el("button");
+  boton.type = "button";
+  boton.append(
+    el("span", "resultado-nombre", nombre),
+    el("span", "resultado-dir", [resto, distanciaTexto(centro, punto)].filter(Boolean).join(" · "))
+  );
+  boton.addEventListener("click", () => {
+    for (const otro of ui.resultadosLugar.children) otro.classList.remove("elegido");
+    li.classList.add("elegido");
+    ponerPunto(punto, true);
+    ui.nombreLugar.value = nombre;
+    lugarRepetidoId = null;
+  });
+  li.append(boton);
+  return li;
+}
+
+function dondeEstoy() {
+  if (!navigator.geolocation) {
+    errorLugar("Este navegador no sabe dónde estás. Busca el sitio o toca el mapa.");
+    return;
+  }
+  ui.btnDondeEstoy.disabled = true;
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      ui.btnDondeEstoy.disabled = false;
+      if (mapaLugar) ponerPunto([pos.coords.latitude, pos.coords.longitude], true);
+    },
+    () => {
+      ui.btnDondeEstoy.disabled = false;
+      errorLugar("No se pudo saber dónde estás (¿permiso de ubicación?). Busca el sitio o toca el mapa.");
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
+  );
+}
+
+async function guardarLugarNuevo() {
+  const nombre = ui.nombreLugar.value.trim();
+  if (!puntoNuevo) return errorLugar("Elige el sitio: búscalo, toca el mapa o usa «Dónde estoy».");
+  if (!nombre) return errorLugar("Ponle un nombre al lugar.");
+  const [lat, lon] = puntoNuevo.map((n) => Math.round(n * 1e6) / 1e6);
+  ui.btnGuardarLugar.disabled = true;
+  let id = null;
+  let nombreFinal = nombre;
+  if (lugarRepetidoId) {
+    nombreFinal = (lugares.get(lugarRepetidoId) || { nombre }).nombre;
+    // Segundo «Guardar» con un nombre que ya existía: se mueve ese lugar aquí
+    const { error } = await sb.from("lugares").update({ lat, lon }).eq("id", lugarRepetidoId);
+    if (!error) id = lugarRepetidoId;
+    else errorLugar("No se pudo mover el lugar: " + error.message);
+  } else {
+    const { data, error } = await sb.from("lugares").insert({ nombre, lat, lon }).select("id").single();
+    if (!error) {
+      id = data.id;
+    } else if (error.code === "23505") {
+      const clave = nombre.toLowerCase();
+      lugarRepetidoId = [...lugares].find(([, l]) => l.nombre.trim().toLowerCase() === clave)?.[0] || null;
+      errorLugar(
+        lugarRepetidoId
+          ? "Ya tienes un lugar «" + lugares.get(lugarRepetidoId).nombre +
+              "». Pulsa otra vez «Guardar lugar» para moverlo aquí, o cambia el nombre."
+          : "Ya hay un lugar con ese nombre. Cambia el nombre."
+      );
+    } else {
+      errorLugar("No se pudo guardar el lugar: " + error.message);
+    }
+  }
+  ui.btnGuardarLugar.disabled = false;
+  if (!id) return;
+
+  // El lugar recién guardado queda puesto en el aviso desde el que se abrió
+  const aviso = avisoDelLugar;
+  if (aviso) {
+    const r = await actualizarAviso(aviso.id, { lugar_id: id }, "poner el lugar");
+    if (r) estado(r.fallo);
+  }
+  cerrarHoja(ui.dlgNuevoLugar);
+  await cargarLugares();
+  await cargar(); // va antes: cargar() limpia la línea de estado
+  estado("Lugar «" + nombreFinal + "» guardado" + (aviso ? " y puesto en el aviso." : "."), "ok");
+}
+
+ui.btnAgregarLugar.addEventListener("click", abrirAgregarLugar);
+ui.btnCerrarLugar.addEventListener("click", () => cerrarHoja(ui.dlgLugar));
+ui.btnCancelarLugar.addEventListener("click", () => cerrarHoja(ui.dlgNuevoLugar));
+ui.formBuscarLugar.addEventListener("submit", (e) => {
+  e.preventDefault();
+  ui.buscarLugar.blur(); // en el teléfono, que se baje el teclado y se vean los resultados
+  buscarLugares(ui.buscarLugar.value);
+});
+ui.btnDondeEstoy.addEventListener("click", dondeEstoy);
+ui.btnGuardarLugar.addEventListener("click", guardarLugarNuevo);
+ui.nombreLugar.addEventListener("input", () => {
+  lugarRepetidoId = null; // con otro nombre, ya no se mueve el existente
+  errorLugar("");
 });
 
 // ---------- Panel personal ----------
