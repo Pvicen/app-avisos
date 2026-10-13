@@ -1100,25 +1100,29 @@ ui.formClave.addEventListener("submit", async (e) => {
 });
 
 // ---------- Lugares: elegir el de un aviso y agregar uno nuevo ----------
-// Todo dentro de la app. La búsqueda es la de OpenStreetMap (Nominatim: una búsqueda por envío, sin
-// autocompletar, como pide su política) y el mapa, Leaflet con las teselas de OpenStreetMap; los dos
-// se cargan solo al abrir «Agregar lugar». Desde cada lugar se puede abrir Google Maps.
+// Todo dentro de la app, con Google Maps: el buscador sugiere sitios mientras se escribe (Places,
+// «Autocomplete» con sesión: las sugerencias no se cobran si se acaba eligiendo uno) y el mapa es el
+// de Google. Se carga solo al abrir «Agregar lugar», con la clave pública GOOGLE_MAPS_CLAVE de
+// config.js (restringida a esta web). Google sirve su cargador dinámico: no admite SRI.
 
-const LEAFLET_BASE = "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/";
-const LEAFLET_JS_SRI = "sha384-cxOPjt7s7Iz04uaHJceBmS+qpjv2JkIHNVcuOrM+YHwZOmJGBXI00mdUXEq65HTH";
-const LEAFLET_CSS_SRI = "sha384-sHL9NAb7lN7rfvG5lfHpm643Xkcjzp4jFvuavGOndn6pjVqS6ny56CAt3nsEVT4H";
-const NOMINATIM = "https://nominatim.openstreetmap.org/search";
+const GOOGLE_MAPS_URL = "https://maps.googleapis.com/maps/api/js";
 const CENTRO_POR_DEFECTO = [40.4168, -3.7038]; // Madrid, si aún no hay ningún lugar guardado
-// El pincho del mapa: un SVG fijo (sin datos), en el color de la app
-const PINCHO_SVG =
-  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s-7-6.6-7-11.6a7 7 0 0 1 14 0C19 15.4 12 22 12 22z"/><circle cx="12" cy="10.2" r="2.6"/></svg>';
 
 let avisoDelLugar = null;   // el aviso al que se le está eligiendo lugar
-let leafletPromesa = null;
-let mapaLugar = null;       // { mapa, pincho } de Leaflet, creado la primera vez
+let mapsPromesa = null;
+let maps = null;            // { Map, Marker, AutocompleteSuggestion, AutocompleteSessionToken }
+let mapaLugar = null;       // { mapa, pincho } de Google, creado la primera vez
 let puntoNuevo = null;      // [lat, lon] elegido en «Agregar lugar»
 let lugarRepetidoId = null; // si el nombre ya existe, su id: el segundo «Guardar» lo mueve aquí
-let ultimaBusqueda = 0;     // Nominatim: como mucho una búsqueda por segundo
+let sesionBusqueda = null;  // token de sesión de Places: de la primera letra a elegir un sitio
+let busquedaSeq = 0;        // para descartar sugerencias que llegan tarde
+let temporizadorBusqueda = null;
+
+// Google llama a esto si la clave no vale para esta web (restricciones, facturación…)
+window.gm_authFailure = () => {
+  mapsPromesa = null;
+  errorLugar("Google Maps no acepta la clave desde esta web. Revisa sus restricciones en Google Cloud.");
+};
 
 function urlGoogleMaps(l) {
   return "https://www.google.com/maps/search/?api=1&query=" + l.lat + "," + l.lon;
@@ -1183,32 +1187,46 @@ async function borrarLugar(id, lugar) {
   cargar();
 }
 
-function cargarLeaflet() {
-  if (window.L) return Promise.resolve(true);
-  if (leafletPromesa) return leafletPromesa;
-  leafletPromesa = new Promise((resolver) => {
-    if (!document.querySelector("link[data-leaflet]")) {
-      const css = document.createElement("link");
-      css.rel = "stylesheet";
-      css.href = LEAFLET_BASE + "leaflet.css";
-      css.integrity = LEAFLET_CSS_SRI;
-      css.crossOrigin = "anonymous";
-      css.dataset.leaflet = "1";
-      document.head.append(css);
-    }
+/** Carga Google Maps (mapa, pincho y sugerencias de Places). false si no hay clave o no carga. */
+function cargarGoogleMaps() {
+  if (maps) return Promise.resolve(true);
+  if (typeof GOOGLE_MAPS_CLAVE === "undefined" || !GOOGLE_MAPS_CLAVE) return Promise.resolve(false);
+  if (mapsPromesa) return mapsPromesa;
+  mapsPromesa = new Promise((resolver) => {
+    const fallo = () => {
+      mapsPromesa = null; // se reintenta la próxima vez
+      resolver(false);
+    };
+    window.__mapsListo = async () => {
+      try {
+        const [{ Map }, marcador, { AutocompleteSuggestion, AutocompleteSessionToken }] = await Promise.all([
+          google.maps.importLibrary("maps"),
+          google.maps.importLibrary("marker"),
+          google.maps.importLibrary("places"),
+        ]);
+        maps = { Map, Marker: marcador.Marker || google.maps.Marker, AutocompleteSuggestion, AutocompleteSessionToken };
+        resolver(true);
+      } catch {
+        fallo();
+      }
+    };
     const js = document.createElement("script");
-    js.src = LEAFLET_BASE + "leaflet.js";
-    js.integrity = LEAFLET_JS_SRI;
-    js.crossOrigin = "anonymous";
-    js.onload = () => resolver(Boolean(window.L));
+    js.src = GOOGLE_MAPS_URL + "?" + new URLSearchParams({
+      key: GOOGLE_MAPS_CLAVE,
+      v: "weekly",
+      language: "es",
+      region: "ES",
+      loading: "async",
+      callback: "__mapsListo",
+    });
+    js.async = true;
     js.onerror = () => {
       js.remove();
-      leafletPromesa = null; // se reintenta la próxima vez
-      resolver(false);
+      fallo();
     };
     document.head.append(js);
   });
-  return leafletPromesa;
+  return mapsPromesa;
 }
 
 function errorLugar(texto) {
@@ -1230,111 +1248,123 @@ async function abrirAgregarLugar() {
   errorLugar("");
   puntoNuevo = null;
   lugarRepetidoId = null;
+  sesionBusqueda = null;
   abrirHoja(ui.dlgNuevoLugar);
-  if (!(await cargarLeaflet())) {
-    errorLugar("No se pudo cargar el mapa. Comprueba la conexión y vuelve a abrirlo.");
+  if (typeof GOOGLE_MAPS_CLAVE === "undefined" || !GOOGLE_MAPS_CLAVE) {
+    errorLugar("Falta la clave de Google Maps en config.js.");
     return;
   }
-  const centro = centroDeReferencia();
+  if (!(await cargarGoogleMaps())) {
+    errorLugar("No se pudo cargar Google Maps. Comprueba la conexión y vuelve a abrirlo.");
+    return;
+  }
+  const [lat, lon] = centroDeReferencia();
   if (!mapaLugar) {
-    const mapa = L.map(ui.mapaLugar, { zoomControl: true }).setView(centro, 13);
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "© OpenStreetMap",
-    }).addTo(mapa);
-    mapa.on("click", (e) => ponerPunto([e.latlng.lat, e.latlng.lng], false));
+    const mapa = new maps.Map(ui.mapaLugar, {
+      center: { lat, lng: lon },
+      zoom: 14,
+      disableDefaultUI: true,
+      zoomControl: true,
+      clickableIcons: false,
+      gestureHandling: "greedy",
+    });
+    mapa.addListener("click", (e) => ponerPunto([e.latLng.lat(), e.latLng.lng()], false));
     mapaLugar = { mapa, pincho: null };
   } else {
-    mapaLugar.mapa.setView(centro, 13);
+    mapaLugar.mapa.setCenter({ lat, lng: lon });
+    mapaLugar.mapa.setZoom(14);
   }
   if (mapaLugar.pincho) {
-    mapaLugar.pincho.remove();
+    mapaLugar.pincho.setMap(null);
     mapaLugar.pincho = null;
   }
-  // La hoja acaba de abrirse: Leaflet tiene que volver a medir el contenedor
-  setTimeout(() => mapaLugar.mapa.invalidateSize(), 60);
   ui.buscarLugar.focus();
 }
 
 function ponerPunto(punto, centrar) {
   puntoNuevo = punto;
   errorLugar("");
+  const posicion = { lat: punto[0], lng: punto[1] };
   if (!mapaLugar.pincho) {
-    const icon = L.divIcon({ className: "pincho-lugar", html: PINCHO_SVG, iconSize: [36, 44], iconAnchor: [18, 42] });
-    mapaLugar.pincho = L.marker(punto, { draggable: true, icon }).addTo(mapaLugar.mapa);
-    mapaLugar.pincho.on("dragend", () => {
-      const p = mapaLugar.pincho.getLatLng();
-      puntoNuevo = [p.lat, p.lng];
+    mapaLugar.pincho = new maps.Marker({ position: posicion, map: mapaLugar.mapa, draggable: true });
+    mapaLugar.pincho.addListener("dragend", () => {
+      const p = mapaLugar.pincho.getPosition();
+      puntoNuevo = [p.lat(), p.lng()];
     });
   } else {
-    mapaLugar.pincho.setLatLng(punto);
+    mapaLugar.pincho.setPosition(posicion);
   }
-  if (centrar) mapaLugar.mapa.setView(punto, 17);
+  if (centrar) {
+    mapaLugar.mapa.setCenter(posicion);
+    mapaLugar.mapa.setZoom(17);
+  }
 }
 
-// Distancia aproximada en línea recta, para enseñarla junto a cada resultado
-function distanciaTexto(a, b) {
-  const rad = Math.PI / 180;
-  const x = (b[1] - a[1]) * rad * Math.cos(((a[0] + b[0]) / 2) * rad);
-  const y = (b[0] - a[0]) * rad;
-  const metros = Math.sqrt(x * x + y * y) * 6371000;
+function distanciaTexto(metros) {
+  if (typeof metros !== "number") return "";
   return metros < 1000 ? Math.round(metros / 10) * 10 + " m" : (metros / 1000).toFixed(1).replace(".", ",") + " km";
 }
 
+/** Sugerencias de Google mientras se escribe, cerca de lo que se mira en el mapa. */
 async function buscarLugares(texto) {
   const q = texto.trim();
-  if (!q) return;
-  if (Date.now() - ultimaBusqueda < 1100) return; // política de Nominatim
-  ultimaBusqueda = Date.now();
-  const centro = mapaLugar ? [mapaLugar.mapa.getCenter().lat, mapaLugar.mapa.getCenter().lng] : centroDeReferencia();
-  const params = new URLSearchParams({
-    q,
-    format: "jsonv2",
-    limit: "10",
-    countrycodes: "es",
-    "accept-language": "es",
-    // Prefiere lo cercano a lo que se está mirando, sin descartar lo de fuera
-    viewbox: [centro[1] - 0.4, centro[0] + 0.3, centro[1] + 0.4, centro[0] - 0.3].join(","),
-    bounded: "0",
-  });
-  ui.resultadosLugar.replaceChildren(el("li", "resultado-aviso", "Buscando…"));
-  let datos;
-  try {
-    const r = await fetch(NOMINATIM + "?" + params, { headers: { Accept: "application/json" } });
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    datos = await r.json();
-  } catch {
-    ui.resultadosLugar.replaceChildren(el("li", "resultado-aviso", "No se pudo buscar. Prueba otra vez en un momento."));
+  const seq = ++busquedaSeq;
+  if (q.length < 2 || !maps || !mapaLugar) {
+    ui.resultadosLugar.replaceChildren();
     return;
   }
-  if (!Array.isArray(datos) || datos.length === 0) {
+  if (!sesionBusqueda) sesionBusqueda = new maps.AutocompleteSessionToken();
+  const c = mapaLugar.mapa.getCenter();
+  const centro = { lat: c.lat(), lng: c.lng() };
+  let sugerencias;
+  try {
+    ({ suggestions: sugerencias } = await maps.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+      input: q,
+      sessionToken: sesionBusqueda,
+      language: "es",
+      region: "es",
+      includedRegionCodes: ["es"],
+      origin: centro,
+      locationBias: { center: centro, radius: 30000 },
+    }));
+  } catch {
+    if (seq === busquedaSeq) {
+      ui.resultadosLugar.replaceChildren(el("li", "resultado-aviso", "No se pudo buscar. Prueba otra vez en un momento."));
+    }
+    return;
+  }
+  if (seq !== busquedaSeq) return; // ya se escribió otra cosa
+  const lugaresSugeridos = (sugerencias || []).map((s) => s.placePrediction).filter(Boolean).slice(0, 6);
+  if (!lugaresSugeridos.length) {
     ui.resultadosLugar.replaceChildren(el("li", "resultado-aviso", "Sin resultados. Prueba con la calle o añade la ciudad."));
     return;
   }
-  // Lo más cercano primero (con cadenas como «Mercadona», el que pilla más a mano)
-  const cercania = (r) => Math.hypot(Number(r.lat) - centro[0], (Number(r.lon) - centro[1]) * 0.77);
-  const ordenados = [...datos].sort((a, b) => cercania(a) - cercania(b)).slice(0, 6);
-  ui.resultadosLugar.replaceChildren(...ordenados.map((r) => resultadoLugar(r, centro)));
+  ui.resultadosLugar.replaceChildren(...lugaresSugeridos.map(resultadoLugar));
 }
 
-function resultadoLugar(r, centro) {
-  const punto = [Number(r.lat), Number(r.lon)];
-  const partes = String(r.display_name || "").split(",").map((s) => s.trim()).filter(Boolean);
-  const nombre = (r.name || partes[0] || "Lugar").slice(0, 40);
-  const resto = partes.filter((p) => p !== nombre).slice(0, 3).join(", ");
+function resultadoLugar(prediccion) {
+  const nombre = prediccion.mainText ? prediccion.mainText.text : prediccion.text.text;
+  const detalle = prediccion.secondaryText ? prediccion.secondaryText.text : "";
   const li = el("li", "resultado-lugar");
   const boton = el("button");
   boton.type = "button";
   boton.append(
     el("span", "resultado-nombre", nombre),
-    el("span", "resultado-dir", [resto, distanciaTexto(centro, punto)].filter(Boolean).join(" · "))
+    el("span", "resultado-dir", [detalle, distanciaTexto(prediccion.distanceMeters)].filter(Boolean).join(" · "))
   );
-  boton.addEventListener("click", () => {
+  boton.addEventListener("click", async () => {
     for (const otro of ui.resultadosLugar.children) otro.classList.remove("elegido");
     li.classList.add("elegido");
-    ponerPunto(punto, true);
-    ui.nombreLugar.value = nombre;
-    lugarRepetidoId = null;
+    try {
+      const sitio = prediccion.toPlace();
+      await sitio.fetchFields({ fields: ["displayName", "location"] });
+      sesionBusqueda = null; // la sesión acaba al elegir un sitio
+      ponerPunto([sitio.location.lat(), sitio.location.lng()], true);
+      ui.nombreLugar.value = (sitio.displayName || nombre).slice(0, 40);
+      lugarRepetidoId = null;
+    } catch {
+      errorLugar("No se pudo abrir ese sitio. Prueba con otro.");
+    }
   });
   li.append(boton);
   return li;
@@ -1410,8 +1440,14 @@ ui.btnCerrarLugar.addEventListener("click", () => cerrarHoja(ui.dlgLugar));
 ui.btnCancelarLugar.addEventListener("click", () => cerrarHoja(ui.dlgNuevoLugar));
 ui.formBuscarLugar.addEventListener("submit", (e) => {
   e.preventDefault();
+  clearTimeout(temporizadorBusqueda);
   ui.buscarLugar.blur(); // en el teléfono, que se baje el teclado y se vean los resultados
   buscarLugares(ui.buscarLugar.value);
+});
+// Como en Google Maps: las sugerencias salen mientras se escribe (con una pausa corta)
+ui.buscarLugar.addEventListener("input", () => {
+  clearTimeout(temporizadorBusqueda);
+  temporizadorBusqueda = setTimeout(() => buscarLugares(ui.buscarLugar.value), 300);
 });
 ui.btnDondeEstoy.addEventListener("click", dondeEstoy);
 ui.btnGuardarLugar.addEventListener("click", guardarLugarNuevo);

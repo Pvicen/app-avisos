@@ -746,11 +746,8 @@ dialog.hoja::backdrop { background: var(--velo); }
   border-radius: 16px;
   overflow: hidden;
   background: var(--segmento);
-  z-index: 0; /* que los controles de Leaflet no tapen el resto de la hoja */
+  z-index: 0; /* que los controles del mapa no tapen el resto de la hoja */
 }
-.pincho-lugar { background: none; border: none; }
-.pincho-lugar svg { width: 36px; height: 44px; fill: var(--acento-boton); stroke: #ffffff; stroke-width: 1.4; }
-.pincho-lugar svg circle { fill: #ffffff; stroke: none; }
 #dlg-nuevo-lugar .campo { margin-bottom: 8px; }
 #dlg-nuevo-lugar .boton-suave { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 #dlg-nuevo-lugar .boton-suave .ic { width: 18px; height: 18px; }

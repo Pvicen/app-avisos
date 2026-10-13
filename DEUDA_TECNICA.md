@@ -24,13 +24,17 @@ Nada de esto es bloqueante ni pone en riesgo datos o seguridad.
 
 - **Solo avisa el Android con la app del widget.** El iPhone ve la etiqueta «📍 …», pero una web no
   puede vigilar sitios.
-- **El buscador de «Agregar lugar» es el de OpenStreetMap (Nominatim)**, no el de Google: encuentra
-  bien direcciones y cadenas conocidas, peor las tiendas pequeñas (para eso, el pincho se pone a mano
-  en el mapa). Solo busca en España y como mucho una vez por segundo, como pide su política.
-- **Lo que se busca y la zona del mapa salen hacia OpenStreetMap** (su buscador y sus teselas), con
-  la dirección de la app como origen. No va ningún dato de la cuenta.
-- **El mapa (Leaflet, de jsdelivr) se baja la primera vez** que se abre «Agregar lugar»; sin conexión
-  no hay mapa ni buscador.
+- **«Agregar lugar» usa Google Maps con una clave pública** (`GOOGLE_MAPS_CLAVE` en `config.js`). Es
+  de navegador: va en la página por diseño y la protegen sus restricciones (solo esta web y solo Maps
+  JavaScript y Places) y los topes diarios de Google Cloud. Alguien podría gastar ese cupo fingiendo
+  venir de esta web; con los topes, como mucho deja de funcionar ese día, sin coste.
+- **El cargador de Google no admite SRI** (lo sirve Google, cambia solo): es la única librería sin
+  integridad fijada. Se carga solo al abrir «Agregar lugar».
+- **El pincho es el marcador clásico de Google** (`google.maps.Marker`), que Google da por antiguo
+  frente a `AdvancedMarkerElement` (este pide un Map ID). Si un día lo retira, hay que cambiarlo.
+- **Lo que se busca y la zona del mapa van a Google.** No va ningún dato de la cuenta.
+- **Sin conexión o sin clave** no hay buscador ni mapa (lo dice); elegir un lugar ya guardado sigue
+  funcionando.
 - **«Moverlo aquí» con dos toques.** Si el nombre ya existe, el primer «Guardar lugar» lo avisa y el
   segundo mueve ese lugar al punto nuevo.
 - **Escribir como hablas no entiende «en el súper»**: el lugar se pone con la píldora.

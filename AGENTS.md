@@ -113,7 +113,9 @@ en lote.
   archivo y los pasos exactos. Toda migración va en `setup/migraciones/`, se puede ejecutar dos
   veces y es compatible con la app publicada y con el widget.
 - **No añadir build ni librerías sueltas.** Las de CDN, con versión fijada y SRI (como supabase-js
-  en `index.html`). Si cambia un asset o una URL de CDN, sube el número de `CACHE` en `sw.js`.
+  en `index.html`). Si cambia un asset o una URL de CDN, sube el número de `CACHE` en `sw.js`. Única
+  excepción: el cargador de Google Maps de «Agregar lugar», que Google sirve sin versión fija ni SRI
+  (anotado en `DEUDA_TECNICA.md`).
 - **No usar `innerHTML` con datos** de la base o de un JSON: nodos de texto y `textContent`.
 - **No salirse del estilo «Cálido»** (variables de color al principio de `style.css`, con su modo
   oscuro) ni del español en textos, código, docs y commits.

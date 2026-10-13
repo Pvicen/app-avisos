@@ -171,9 +171,10 @@ Para que un aviso salte **al llegar a un sitio** («comprar pan» al llegar al s
    enlace de mapa con coordenadas (`https://maps.google.com/?q=LAT,LON`).
 3. En la app web, al tocar un aviso, la píldora **Lugar** abre la hoja «Lugar del aviso»: elegir uno
    de los guardados (o «Sin lugar»), abrirlo en Google Maps, borrarlo o **Agregar lugar** sin salir
-   de la app: se busca el sitio o la dirección (buscador de OpenStreetMap, en España, lo más cercano
-   primero), se afina el pincho en el mapa (o «Dónde estoy»), se le pone nombre y queda puesto en el
-   aviso. El aviso lleva la etiqueta «📍 Súper» (también en el widget). Desde la web pueden agregar
+   de la app: se busca el sitio o la dirección con **Google Maps** (sugerencias mientras escribes,
+   en España, cerca de lo que miras), se afina el pincho en el mapa de Google (o «Dónde estoy»), se
+   le pone nombre y queda puesto en el aviso. Necesita la clave `GOOGLE_MAPS_CLAVE` de `config.js`
+   (ver [Clave de Google Maps](#clave-de-google-maps)). El aviso lleva la etiqueta «📍 Súper» (también en el widget). Desde la web pueden agregar
    lugares las dos personas, también en iPhone y en el PC.
 
 Al entrar en la zona del lugar (150 m), ese Android enseña «📍 En Súper: comprar pan · leche», una
@@ -182,6 +183,23 @@ sitios guardados (migración
 [`setup/migraciones/2026-10-10-lugares.sql`](setup/migraciones/2026-10-10-lugares.sql), prueba en
 [`setup/pruebas/lugares.md`](setup/pruebas/lugares.md)). En iPhone no hay avisos por lugar (una web no
 puede vigilar sitios), pero se ve la etiqueta.
+
+## Clave de Google Maps
+
+«Agregar lugar» usa Google Maps (buscador y mapa) con una clave **de navegador**: es pública por
+diseño (va en `config.js`, que se sirve en la página) y la protegen sus restricciones. Se crea una vez
+en [Google Cloud](https://console.cloud.google.com):
+
+1. Proyecto nuevo (p. ej. «Avisos») y vincularle una cuenta de **facturación** (Google Maps la exige;
+   el uso de dos personas queda dentro de lo gratuito).
+2. **APIs y servicios → Biblioteca**: habilitar **Maps JavaScript API** y **Places API (New)**.
+3. **Credenciales → Crear credenciales → Clave de API**, y editarla:
+   - Restricciones de aplicaciones → **Sitios web**: `https://pvicen.github.io/*` y
+     `http://localhost:8123/*` (la vista previa local).
+   - Restricciones de API → **Restringir clave**: Maps JavaScript API y Places API (New).
+4. Recomendado, para no pagar nunca: en las **Cuotas** de las dos APIs, un tope bajo a las peticiones
+   por día (p. ej. 300), y en **Facturación → Presupuestos y alertas**, un presupuesto de 1 € con aviso.
+5. Copiar la clave y ponerla en `config.js` (`GOOGLE_MAPS_CLAVE`).
 
 ## Resumen del lunes
 
