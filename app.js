@@ -1328,6 +1328,7 @@ async function buscarLugares(texto) {
       locationBias: { center: centro, radius: 30000 },
     }));
   } catch {
+    sesionBusqueda = null; // tras un fallo, la siguiente búsqueda empieza sesión nueva
     if (seq === busquedaSeq) {
       ui.resultadosLugar.replaceChildren(el("li", "resultado-aviso", "No se pudo buscar. Prueba otra vez en un momento."));
     }
