@@ -313,10 +313,52 @@ días que faltan, el resto de la semana, las novedades de Canvas y, más adelant
 
 Cada vez que cambie `validar.mjs` hay que volver a desplegar la función.
 
+## Avisos de Atlas (solo para su dueño)
+
+Atlas, el asistente del PC del dueño, puede crearle un aviso en la lista («recuérdame llamar a la
+tutora mañana a las 9:30»), siempre después de que el dueño diga «sí» en una ventana de su PC. Lo
+hace con la Edge Function [`atlas-aviso`](supabase/functions/atlas-aviso/).
+
+- **Solo para el dueño.** El destinatario (`para`) sale del secreto `ATLAS_PARA`, nunca de la
+  petición, y el aviso lleva la marca `atlas` en `creado_por`. `Notificar` manda esos avisos **solo a
+  los dispositivos del destinatario**, nunca a los de las demás personas; los avisos de siempre
+  siguen sonando en todos. La lista la sigue viendo quien la comparte, como hoy, con una «A» gris
+  («Lo anotó atlas»).
+- **Al crearlo**, el disparador de «Te toca a ti» avisa enseguida al destinatario («👉 Te toca: …»,
+  «Te lo pasaron»), solo a sus dispositivos; y si tiene fecha, vuelve a sonar a su hora.
+- **La función solo inserta**: `{id, texto, vence, hora}`, de 4 KB como mucho, con la clave en la
+  cabecera `x-atlas-clave`. 201 creado, 200 si ese id ya existía (no toca nada), 400, 401, 405, 413
+  y 429 si Atlas ya creó 30 en las últimas 24 horas. Sin CORS y sin el cuerpo en los logs.
+- **No hace falta migración:** usa las columnas `creado_por` y `para` que ya existen. El
+  destinatario tiene que estar en `personas` (como cualquier `para`).
+
+### Configuración (una vez)
+
+1. **La clave.** La genera Plutón en el PC del dueño (`python -m pluton_cuentas.avisos_alta`, en su
+   repo): la guarda cifrada en ese PC y la copia una vez al portapapeles.
+2. **Secretos** (Edge Functions → Secrets): `ATLAS_CLAVE`, pegando esa clave, y `ATLAS_PARA`, el
+   correo del dueño en minúsculas, el mismo que tiene en `personas`. Después, **borra el
+   portapapeles** como en el panel (y su entrada del historial, Win+V).
+3. **Función.** Edge Functions → *Deploy a new function* → *Via Editor*. En «Function name»,
+   `atlas-aviso`, tal cual, con los dos archivos de
+   [`supabase/functions/atlas-aviso/`](supabase/functions/atlas-aviso/): `index.ts` y `validar.mjs`
+   (renombra el segundo archivo del editor a `validar.mjs`). Despliégala y, en sus ajustes, apaga
+   **Enforce JWT verification**: el PC no tiene sesión, entra con la clave.
+4. **Notificar, otra vez.** Vuelve a desplegar `Notificar` con su `index.ts` y su `reglas.mjs`
+   nuevos: sin eso, un aviso de Atlas sonaría en todos los dispositivos.
+5. **Prueba**, sin clave (no crea nada). Sin la cabecera tiene que dar **401**, y con `GET`, **405**:
+
+   ```powershell
+   try { Invoke-WebRequest -Method Post -Uri "https://TU_REF.supabase.co/functions/v1/atlas-aviso" -ContentType "application/json" -Body "{}" -UseBasicParsing } catch { [int]$_.Exception.Response.StatusCode }
+   try { Invoke-WebRequest -Method Get -Uri "https://TU_REF.supabase.co/functions/v1/atlas-aviso" -UseBasicParsing } catch { [int]$_.Exception.Response.StatusCode }
+   ```
+
+Cada vez que cambie `validar.mjs` hay que volver a desplegar la función.
+
 ### Probar y desarrollar
 
-- `node --test` desde la raíz del repo ejecuta las pruebas del validador y de la función, que están
-  en `setup/pruebas/`.
+- `node --test` desde la raíz del repo ejecuta las pruebas del validador y de las funciones
+  (`panel-subir`, `atlas-aviso` y las reglas de `Notificar`), que están en `setup/pruebas/`.
 - En la vista previa local, `?panel=ejemplo` (solo en `localhost`) carga
   [`setup/panel-ejemplo.json`](setup/panel-ejemplo.json), con datos inventados y sus fechas
   corridas a hoy; `&horas=5` simula que el portátil lleva 5 horas sin mandar datos.

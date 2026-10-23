@@ -88,6 +88,7 @@ Antes de programar, cada Caja se clasifica. **Ante la duda, es crítica.**
 | Notificaciones | `supabase/functions/notificar/` (`index.ts` y las reglas en `reglas.mjs`) | Lee `avisos` y `push_suscripciones` con la service role; columnas `hora`/`notificado_hora` de `setup/migraciones/2026-10-08-hora.sql`; cola `avisos_eventos` de `setup/migraciones/2026-10-09-te-toca.sql`; marca `avisos_resumenes` de `setup/migraciones/2026-10-09-resumen.sql` |
 | Configuración | `config.js` | Solo claves públicas: URL, clave anon y llave VAPID pública |
 | Panel | `supabase/functions/panel-subir/`, la tabla `panel` y su vista en `app.js` | Contratos C1, C2 y C3 de `docs/panel-contrato.md` |
+| Avisos de Atlas | `supabase/functions/atlas-aviso/` (`index.ts` y `validar.mjs`) y el reparto de `Notificar` | El cuerpo `{id, texto, vence, hora}` de `validar.mjs`; la marca `MARCA_ATLAS` en `creado_por`, copiada en `reglas.mjs` y atada por prueba; `para` del secreto `ATLAS_PARA`; solo a los dispositivos de `para` |
 
 Fuera de este repo, y sin romperlos: el widget de Android (repo `Pvicen/avisos-widget`, que lee
 `avisos` con `creado_por`, `personas` y `lugares`, y vigila los lugares con geovallas) y la app
@@ -103,7 +104,9 @@ en lote.
   ni sus asignaturas reales, ni correos, ni claves. Ejemplos y pruebas, con datos inventados.
 - **No exponer lo de una persona a otra.** La lista de avisos es común a todas las personas de la
   tabla `personas` (función `es_persona()`) y eso no cambia. Lo que sea solo de Vicente (su panel)
-  no lo ve nadie más: ni por la app, ni por la API, ni por realtime.
+  no lo ve nadie más: ni por la app, ni por la API, ni por realtime. Los avisos que crea Atlas
+  (`atlas-aviso`, con la marca `atlas` en `creado_por`) se ven en la lista común, pero suenan **solo
+  en los dispositivos de su destinatario**, nunca en los de los demás.
 - **No romper lo que funciona:** avisos, historial, notificaciones, widget e instalación en
   iPhone. La Edge Function desplegada se llama `Notificar`, con mayúscula (el cron apunta ahí),
   aunque en el repo viva en `supabase/functions/notificar/`.
@@ -138,8 +141,8 @@ http://localhost:8123/). Sin sesión solo se ve la entrada; para mirar la lista 
 inventados desde la consola, sin tocar Supabase. El panel se prueba con `?panel=ejemplo`, que
 solo funciona en localhost y lee `setup/panel-ejemplo.json`.
 
-Las pruebas automáticas son las del panel, las de las reglas de `Notificar` y las de
-`interpretar.js` (`setup/pruebas/`).
+Las pruebas automáticas son las del panel, las de `atlas-aviso`, las de las reglas de `Notificar` y
+las de `interpretar.js` (`setup/pruebas/`).
 Gate mínimo antes de commitear:
 
 ```powershell
