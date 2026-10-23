@@ -2,6 +2,8 @@
 // La invoca pg_cron cada minuto y envía las notificaciones push de los avisos, en hora de España:
 // - con fecha y sin hora: una vez por fecha, desde las 9:00;
 // - con fecha y hora: una vez por fecha y hora, a esa hora.
+// Los avisos que crea Atlas (la función `atlas-aviso`, con su marca en `creado_por`) suenan solo en
+// los dispositivos de su destinatario (`para`), nunca en los de los demás; los otros, en todos.
 // Además envía la cola `avisos_eventos` («te toca» y «terminado») a los dispositivos de cada
 // destinatario, y los lunes desde las 9:00 el resumen de la semana a cada persona (una vez,
 // apuntado en `avisos_resumenes`). Con el cuerpo {"resumen":"prueba"} envía el resumen en el
@@ -28,6 +30,8 @@ type Aviso = {
   hora: string | null;
   notificado_para: string | null;
   notificado_hora: string | null;
+  creado_por: string | null;
+  para: string | null;
 };
 
 type Suscripcion = {
@@ -134,7 +138,8 @@ Deno.serve(async (req) => {
       leerAvisos: async (hoy: string) => {
         const { data, error } = await sb
           .from("avisos")
-          .select("id, texto, vence, hora, notificado_para, notificado_hora")
+          // creado_por y para: los avisos de Atlas suenan solo en los dispositivos de su destinatario
+          .select("id, texto, vence, hora, notificado_para, notificado_hora, creado_por, para")
           .is("completado_en", null)
           .not("vence", "is", null)
           .lte("vence", hoy);

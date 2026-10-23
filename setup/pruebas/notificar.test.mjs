@@ -9,6 +9,7 @@ import {
   debeSonar,
   esHoraDelResumen,
   lunesDe,
+  MARCA_ATLAS,
   MAX_INTENTOS_EVENTO,
   mensajeDeEvento,
   repartir,
@@ -17,6 +18,7 @@ import {
   resumenDelLunes,
   yaSono,
 } from "../../supabase/functions/notificar/reglas.mjs";
+import { MARCA_ATLAS as MARCA_DE_LA_FUNCION } from "../../supabase/functions/atlas-aviso/validar.mjs";
 
 const HOY = "2026-10-08";
 
@@ -213,6 +215,66 @@ test("vuelta: si falla la lectura de avisos, la vuelta falla (la función respon
     throw new Error("sin conexión");
   };
   await assert.rejects(repartir(e), /sin conexión/);
+});
+
+// ---------- Los avisos de Atlas: solo a los dispositivos de su destinatario ----------
+
+const DUENO = "dueno@ejemplo.com";
+const OTRA = "otra@ejemplo.com";
+const SUBS_DE_DOS = [
+  { endpoint: "https://push.ejemplo/dueno-movil", datos: {}, correo: DUENO },
+  { endpoint: "https://push.ejemplo/otra", datos: {}, correo: OTRA },
+  { endpoint: "https://push.ejemplo/dueno-pc", datos: {}, correo: DUENO },
+  { endpoint: "https://push.ejemplo/sin-correo", datos: {}, correo: null },
+];
+
+test("Atlas: la marca es la misma que pone la función atlas-aviso", () => {
+  assert.equal(MARCA_ATLAS, "atlas");
+  assert.equal(MARCA_ATLAS, MARCA_DE_LA_FUNCION);
+});
+
+test("Atlas: su aviso va solo a los dispositivos de «para»; los demás, a todos, como siempre", async () => {
+  const avisos = [
+    aviso({ id: "de-atlas", hora: "18:00:00", creado_por: MARCA_ATLAS, para: DUENO }),
+    aviso({ id: "normal", hora: "18:00:00", creado_por: OTRA, para: DUENO }),
+  ];
+  const { e, log } = entorno({ avisos, subs: SUBS_DE_DOS });
+  await repartir(e);
+  assert.deepEqual(log.reservados, ["de-atlas", "normal"]);
+  const deAtlas = log.enviados.filter((x) => x.tag === "aviso-de-atlas").map((x) => x.endpoint);
+  assert.deepEqual(deAtlas, ["https://push.ejemplo/dueno-movil", "https://push.ejemplo/dueno-pc"]);
+  const normal = log.enviados.filter((x) => x.tag === "aviso-normal").map((x) => x.endpoint);
+  assert.equal(normal.length, SUBS_DE_DOS.length); // la lista compartida sigue sonando en todos
+});
+
+test("Atlas: sin dispositivos de su destinatario, o sin «para», no se reserva ni se envía", async () => {
+  for (const para of ["nadie@ejemplo.com", null, undefined]) {
+    const { e, log } = entorno({
+      avisos: [aviso({ id: "de-atlas", hora: "18:00:00", creado_por: MARCA_ATLAS, para })],
+      subs: SUBS_DE_DOS,
+    });
+    await repartir(e);
+    assert.deepEqual(log.reservados, [], String(para));
+    assert.deepEqual(log.enviados, [], String(para));
+  }
+  // CONTROL: con su destinatario, sí (sin esto, el de arriba pasaría aunque no se enviara nada a nadie).
+  const { e, log } = entorno({
+    avisos: [aviso({ id: "de-atlas", hora: "18:00:00", creado_por: MARCA_ATLAS, para: DUENO })],
+    subs: SUBS_DE_DOS,
+  });
+  await repartir(e);
+  assert.deepEqual(log.reservados, ["de-atlas"]);
+});
+
+test("Atlas: un dispositivo muerto de su destinatario se borra; si no llega, se devuelve", async () => {
+  const avisos = [aviso({ id: "de-atlas", hora: "18:00:00", creado_por: MARCA_ATLAS, para: DUENO })];
+  const muerto = entorno({ avisos, subs: SUBS_DE_DOS, enviar: (s) => (s.endpoint.endsWith("movil") ? "muerta" : "ok") });
+  await repartir(muerto.e);
+  assert.deepEqual(muerto.log.borradas, ["https://push.ejemplo/dueno-movil"]);
+  assert.deepEqual(muerto.log.devueltos, []);
+  const falla = entorno({ avisos, subs: SUBS_DE_DOS, enviar: () => "fallo" });
+  await repartir(falla.e);
+  assert.deepEqual(falla.log.devueltos, ["de-atlas"]);
 });
 
 // ---------- «Te toca a ti» y «terminado» ----------

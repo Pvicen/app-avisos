@@ -10,6 +10,11 @@
 // setup/migraciones/2026-10-09-te-toca.sql.
 
 export const ZONA = "Europe/Madrid";
+/**
+ * La marca de los avisos que crea Atlas (`creado_por`), la misma que pone la función `atlas-aviso`
+ * (copia atada por una prueba): esos avisos suenan solo en los dispositivos de su destinatario.
+ */
+export const MARCA_ATLAS = "atlas";
 /** Los avisos sin hora suenan desde esta hora del día en que vencen. */
 export const HORA_DE_LA_MANANA = "09:00:00";
 
@@ -62,11 +67,20 @@ function fechaCorta(fecha, hoy) {
 }
 
 /**
+ * Los dispositivos a los que va un aviso: los de su destinatario si lo creó Atlas (MARCA_ATLAS en
+ * `creado_por`), nunca los de los demás; si no, todos, como siempre.
+ */
+export function destinosDelAviso(aviso, subs) {
+  if (aviso.creado_por !== MARCA_ATLAS) return subs;
+  return aviso.para ? subs.filter((s) => s.correo === aviso.para) : [];
+}
+
+/**
  * Una vuelta del cron. `e` trae la entrada y la salida:
  *   ahora                        { hoy, hora } de España
  *   leerAvisos(hoy)              pendientes con vence <= hoy: id, texto, vence, hora,
- *                                notificado_para, notificado_hora
- *   leerSuscripciones()          [{ endpoint, datos }]
+ *                                notificado_para, notificado_hora, creado_por, para
+ *   leerSuscripciones()          [{ endpoint, datos, correo }]
  *   reservar(aviso)              pone sus marcas si siguen como se leyeron; true = lo envía esta vuelta
  *   devolver(aviso)              deja las marcas como estaban (no llegó a ningún dispositivo)
  *   enviar(suscripcion, mensaje) "ok" | "muerta" (el dispositivo ya no existe) | "fallo"
@@ -85,6 +99,9 @@ export async function repartir(e) {
   const muertas = new Set();
 
   for (const aviso of pendientes) {
+    // Uno de Atlas sin dispositivos de su destinatario no se reserva: suena cuando tenga alguno
+    const destinos = destinosDelAviso(aviso, subs);
+    if (!destinos.length) continue;
     // Si otra vuelta ya lo tomó, o lo cambiaron entre medias, no se envía
     if (!(await e.reservar(aviso))) continue;
     const mensaje = {
@@ -93,7 +110,7 @@ export async function repartir(e) {
       tag: "aviso-" + aviso.id,
     };
     let exitos = 0;
-    for (const s of subs) {
+    for (const s of destinos) {
       if (muertas.has(s.endpoint)) continue;
       const r = await e.enviar(s, mensaje);
       if (r === "ok") {
