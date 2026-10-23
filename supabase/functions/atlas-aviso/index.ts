@@ -8,6 +8,9 @@
 //   `Notificar` los manda solo a sus dispositivos; la lista la sigue viendo quien la comparte.
 // - El cuerpo, 4 KB como mucho: {id, texto, vence, hora} (validar.mjs). SOLO inserta: si el id ya
 //   existe, no toca nada.
+// - El tope del día y la inserción van en UN paso, la función de la base `atlas_crear_aviso`
+//   (setup/migraciones/2026-10-24-atlas-aviso-tope.sql), bajo un cerrojo: contar aquí y luego
+//   insertar dejaba que varias peticiones a la vez se saltaran el tope.
 // - 201 creado · 200 el id ya existía · 400 cuerpo malo · 401 clave mala · 405 otro método ·
 //   413 más de 4 KB · 429 más de 30 avisos de Atlas en 24 h · 500 sin configurar o la base falla.
 // - Sin CORS (no la llama ningún navegador) y nunca escribe el cuerpo, el destinatario ni la clave en
@@ -31,10 +34,11 @@ export type Fila = {
 export type Entorno = {
   clave: string;
   para: string;
-  /** Cuántos avisos de Atlas se crearon en las últimas 24 horas; null si no se pudo contar. */
-  contarDelDia: () => Promise<number | null>;
-  /** Inserta si el id no existe: "creado", "existia" o un código de error corto. */
-  insertar: (fila: Fila) => Promise<string>;
+  /**
+   * En un solo paso y bajo el cerrojo de la base: "existia" si el id ya existe, "tope" si ya hay
+   * MAX_AL_DIA de Atlas en 24 horas, "creado" si lo inserta, o un código de error corto.
+   */
+  crear: (fila: Fila) => Promise<string>;
 };
 
 function respuesta(status: number, cuerpo?: unknown, cabeceras: Record<string, string> = {}): Response {
@@ -106,15 +110,8 @@ export async function manejar(req: Request, entorno: Entorno): Promise<Response>
   const revision = revisarCuerpo(bytes);
   if (!revision.ok) return respuesta(revision.estado, { error: "el aviso no tiene la forma de Atlas" });
 
-  const delDia = await entorno.contarDelDia();
-  if (delDia === null) {
-    console.error("atlas-aviso: no se pudieron contar los avisos del día");
-    return respuesta(500, { error: "no se pudo crear el aviso" });
-  }
-  if (delDia >= MAX_AL_DIA) return respuesta(429, { error: "ya hay 30 avisos de Atlas en 24 horas" });
-
   const { id, texto, vence, hora } = revision.datos;
-  const resultado = await entorno.insertar({
+  const resultado = await entorno.crear({
     id,
     texto,
     vence,
@@ -124,6 +121,7 @@ export async function manejar(req: Request, entorno: Entorno): Promise<Response>
   });
   if (resultado === "creado") return respuesta(201, { estado: "creado" });
   if (resultado === "existia") return respuesta(200, { estado: "ya existía" });
+  if (resultado === "tope") return respuesta(429, { error: `ya hay ${MAX_AL_DIA} avisos de Atlas en 24 horas` });
   console.error("atlas-aviso: no se pudo crear el aviso:", resultado);
   return respuesta(500, { error: "no se pudo crear el aviso" });
 }
@@ -146,46 +144,29 @@ async function codigoDeError(r: Response): Promise<string> {
   return `HTTP ${r.status}${codigo ? " " + codigo : ""}`;
 }
 
-/** Cuenta los avisos de Atlas de las últimas 24 horas, sin traer ninguno (solo la cabecera del total). */
-async function contarDelDiaEnSupabase(): Promise<number | null> {
-  const c = credenciales();
-  if (!c) return null;
-  const desde = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-  try {
-    const r = await fetch(
-      `${c.url}/rest/v1/avisos?select=id&creado_por=eq.${MARCA_ATLAS}&creado_en=gte.${encodeURIComponent(desde)}`,
-      {
-        method: "HEAD",
-        headers: { apikey: c.llave, Authorization: `Bearer ${c.llave}`, Prefer: "count=exact" },
-      },
-    );
-    if (!r.ok) return null;
-    const total = Number((r.headers.get("content-range") ?? "").split("/")[1]);
-    return Number.isInteger(total) && total >= 0 ? total : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Inserta con la service role; si el id ya existe, no hace nada (ON CONFLICT DO NOTHING). */
-async function insertarEnSupabase(fila: Fila): Promise<string> {
+/**
+ * Llama con la service role a `atlas_crear_aviso`, que mira el id, cuenta y solo entonces inserta,
+ * todo bajo su cerrojo. La marca y el tope los pone la base; aquí solo viajan los datos del aviso y
+ * `para`. PostgREST devuelve el texto de la función como una cadena JSON.
+ */
+async function crearEnSupabase(fila: Fila): Promise<string> {
   const c = credenciales();
   if (!c) return "faltan SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY";
   try {
-    const r = await fetch(`${c.url}/rest/v1/avisos?on_conflict=id&select=id`, {
+    const r = await fetch(`${c.url}/rest/v1/rpc/atlas_crear_aviso`, {
       method: "POST",
-      headers: {
-        apikey: c.llave,
-        Authorization: `Bearer ${c.llave}`,
-        "Content-Type": "application/json",
-        Prefer: "resolution=ignore-duplicates,return=representation",
-      },
-      body: JSON.stringify(fila),
+      headers: { apikey: c.llave, Authorization: `Bearer ${c.llave}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        p_id: fila.id,
+        p_texto: fila.texto,
+        p_vence: fila.vence,
+        p_hora: fila.hora,
+        p_para: fila.para,
+      }),
     });
     if (!r.ok) return await codigoDeError(r);
-    const filas = await r.json();
-    if (!Array.isArray(filas)) return "respuesta rara de la base";
-    return filas.length > 0 ? "creado" : "existia";
+    const dicho = await r.json();
+    return dicho === "creado" || dicho === "existia" || dicho === "tope" ? dicho : "respuesta rara de la base";
   } catch {
     return "sin conexión con la base";
   }
@@ -197,8 +178,7 @@ if (typeof Deno !== "undefined") {
     manejar(req, {
       clave: Deno.env.get("ATLAS_CLAVE") ?? "",
       para: Deno.env.get("ATLAS_PARA") ?? "",
-      contarDelDia: contarDelDiaEnSupabase,
-      insertar: insertarEnSupabase,
+      crear: crearEnSupabase,
     })
   );
 }

@@ -88,7 +88,7 @@ Antes de programar, cada Caja se clasifica. **Ante la duda, es crítica.**
 | Notificaciones | `supabase/functions/notificar/` (`index.ts` y las reglas en `reglas.mjs`) | Lee `avisos` y `push_suscripciones` con la service role; columnas `hora`/`notificado_hora` de `setup/migraciones/2026-10-08-hora.sql`; cola `avisos_eventos` de `setup/migraciones/2026-10-09-te-toca.sql`; marca `avisos_resumenes` de `setup/migraciones/2026-10-09-resumen.sql` |
 | Configuración | `config.js` | Solo claves públicas: URL, clave anon y llave VAPID pública |
 | Panel | `supabase/functions/panel-subir/`, la tabla `panel` y su vista en `app.js` | Contratos C1, C2 y C3 de `docs/panel-contrato.md` |
-| Avisos de Atlas | `supabase/functions/atlas-aviso/` (`index.ts` y `validar.mjs`) y el reparto de `Notificar` | El cuerpo `{id, texto, vence, hora}` de `validar.mjs`; la marca `MARCA_ATLAS` en `creado_por`, copiada en `reglas.mjs` y atada por prueba; `para` del secreto `ATLAS_PARA`; solo a los dispositivos de `para` |
+| Avisos de Atlas | `supabase/functions/atlas-aviso/` (`index.ts` y `validar.mjs`), la función `atlas_crear_aviso` de `setup/migraciones/2026-10-24-atlas-aviso-tope.sql` y el reparto de `Notificar` | El cuerpo `{id, texto, vence, hora}` de `validar.mjs`; la marca `MARCA_ATLAS` en `creado_por`, copiada en `reglas.mjs` y en el SQL y atada por prueba; el tope de 30 al día y la inserción, en un solo paso en la base (cabecera de la migración); `para` del secreto `ATLAS_PARA`; solo a los dispositivos de `para` |
 
 Fuera de este repo, y sin romperlos: el widget de Android (repo `Pvicen/avisos-widget`, que lee
 `avisos` con `creado_por`, `personas` y `lugares`, y vigila los lugares con geovallas) y la app

@@ -4,8 +4,12 @@
 // repo. Solo datos inventados.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { manejar } from "../../supabase/functions/atlas-aviso/index.ts";
 import { MARCA_ATLAS, MAX_AL_DIA, MAX_BYTES, revisarCuerpo } from "../../supabase/functions/atlas-aviso/validar.mjs";
+
+const SQL_TOPE = readFileSync(new URL("../migraciones/2026-10-24-atlas-aviso-tope.sql", import.meta.url), "utf8");
+const FUNCION = readFileSync(new URL("../../supabase/functions/atlas-aviso/index.ts", import.meta.url), "utf8");
 
 const URL_FUNCION = "http://localhost/functions/v1/atlas-aviso";
 const CLAVE = "c1a7e".repeat(12) + "0123"; // 64 caracteres, inventada
@@ -13,23 +17,39 @@ const PARA = "persona@ejemplo.com";
 const ID = "3f1e2d4c-5b6a-4789-8abc-def012345678";
 const BUENO = { id: ID, texto: "Llamar a la tutora", vence: "2026-10-24", hora: "09:30" };
 
-function base({ existentes = new Set(), enDia = 0, fallo = null } = {}) {
+// La base falsa hace lo que `atlas_crear_aviso` (setup/migraciones/2026-10-24-atlas-aviso-tope.sql): una
+// llamada detrás de otra, como su cerrojo, y dentro, el id → el tope → insertar. `enDia` son los avisos de
+// Atlas de las últimas 24 h que ya había; `espera`, los milisegundos que tarda cada llamada.
+function base({ existentes = new Set(), enDia = 0, fallo = null, espera = 0 } = {}) {
   const filas = [];
+  const llamadas = [];
+  let cerrojo = Promise.resolve();
   return {
     filas,
+    llamadas,
     entorno: {
       clave: CLAVE,
       para: ` ${PARA.toUpperCase()} `,
-      contarDelDia: async () => enDia,
-      insertar: async (fila) => {
-        if (fallo) return fallo;
-        if (existentes.has(fila.id)) return "existia";
-        existentes.add(fila.id);
-        filas.push(fila);
-        return "creado";
+      crear: (fila) => {
+        llamadas.push(fila);
+        const turno = cerrojo.then(async () => {
+          if (espera) await new Promise((r) => setTimeout(r, espera));
+          if (fallo) return fallo;
+          if (existentes.has(fila.id)) return "existia";
+          if (enDia + filas.length >= MAX_AL_DIA) return "tope";
+          existentes.add(fila.id);
+          filas.push(fila);
+          return "creado";
+        });
+        cerrojo = turno;
+        return turno;
       },
     },
   };
+}
+
+function idDe(i) {
+  return `3f1e2d4c-5b6a-4789-8abc-${String(i).padStart(12, "0")}`;
 }
 
 function post(cuerpo, cabeceras = { "x-atlas-clave": CLAVE }) {
@@ -122,6 +142,80 @@ test("el tope del día: con 30 de Atlas en las últimas 24 h, 429 y no se insert
   assert.equal(lleno.filas.length, 0);
   const casi = base({ enDia: MAX_AL_DIA - 1 });
   assert.equal((await manejar(post(BUENO), casi.entorno)).status, 201);
+});
+
+test("64 peticiones a la vez: 30 creadas y 34 con 429, nunca más del tope", async () => {
+  const { filas, entorno } = base({ espera: 2 });
+  const respuestas = await Promise.all(
+    Array.from({ length: 64 }, (_, i) => manejar(post({ ...BUENO, id: idDe(i) }), entorno)),
+  );
+  const estados = respuestas.map((r) => r.status);
+  assert.equal(estados.filter((s) => s === 201).length, MAX_AL_DIA);
+  assert.equal(estados.filter((s) => s === 429).length, 64 - MAX_AL_DIA);
+  assert.equal(filas.length, MAX_AL_DIA);
+});
+
+test("el id va antes que el tope: con 30 del día, el que ya existe → 200 y uno nuevo → 429", async () => {
+  const lleno = base({ enDia: MAX_AL_DIA, existentes: new Set([ID]) });
+  assert.equal((await manejar(post(BUENO), lleno.entorno)).status, 200);
+  assert.equal((await manejar(post({ ...BUENO, id: idDe(1) }), lleno.entorno)).status, 429);
+  assert.equal(lleno.filas.length, 0);
+});
+
+test("una sola llamada a la base por aviso válido, y ninguna en los rechazos", async () => {
+  const { llamadas, entorno } = base();
+  await manejar(post(BUENO), entorno);
+  assert.equal(llamadas.length, 1);
+  await manejar(post(BUENO, { "x-atlas-clave": "mala" }), entorno);
+  await manejar(new Request(URL_FUNCION, { method: "GET" }), entorno);
+  await manejar(post({ ...BUENO, texto: "" }), entorno);
+  await manejar(post(new Uint8Array(MAX_BYTES + 1).fill(32)), entorno);
+  assert.equal(llamadas.length, 1);
+});
+
+test("la función no cuenta por su cuenta: llama a atlas_crear_aviso, sin HEAD ni insertar directo", () => {
+  assert.ok(FUNCION.includes("/rest/v1/rpc/atlas_crear_aviso"));
+  for (const viejo of ["contarDelDia", '"HEAD"', "count=exact", "/rest/v1/avisos?", "ignore-duplicates"]) {
+    assert.ok(!FUNCION.includes(viejo), `index.ts aún tiene «${viejo}»`);
+  }
+});
+
+// --- la migración del tope (setup/migraciones/2026-10-24-atlas-aviso-tope.sql), leída como texto --------------
+test("el SQL del tope: cerrojo, search_path vacío, solo la service role y la API recargada", () => {
+  const firma = "public.atlas_crear_aviso(uuid, text, date, time, text)";
+  for (const trozo of [
+    "create or replace function public.atlas_crear_aviso(",
+    "security invoker",
+    "set search_path = ''",
+    "pg_catalog.pg_advisory_xact_lock(",
+    `revoke all on function ${firma} from public, anon, authenticated;`,
+    `grant execute on function ${firma} to service_role;`,
+    "notify pgrst, 'reload schema';",
+    "then 'PASA' else 'FALLA' end",
+  ]) {
+    assert.ok(SQL_TOPE.includes(trozo), `falta «${trozo}»`);
+  }
+});
+
+test("el SQL del tope solo inserta, y el id va antes que el tope", () => {
+  const codigo = SQL_TOPE.split("\n").map((l) => l.replace(/--.*$/, "")).join("\n").toLowerCase();
+  for (const prohibido of ["update ", "delete ", "truncate ", "security definer"]) {
+    assert.ok(!codigo.includes(prohibido), `el SQL tiene «${prohibido.trim()}»`);
+  }
+  assert.equal(codigo.match(/insert into /g)?.length, 1);
+  const cerrojo = codigo.indexOf("pg_advisory_xact_lock(");
+  const existia = codigo.indexOf("return 'existia'");
+  const tope = codigo.indexOf("return 'tope'");
+  const inserta = codigo.indexOf("insert into public.avisos");
+  assert.ok(cerrojo > 0 && cerrojo < existia && existia < tope && tope < inserta, "el orden no es cerrojo → id → tope → insertar");
+});
+
+test("el 30 y la marca del SQL son los de validar.mjs", () => {
+  const numero = SQL_TOPE.match(/interval '24 hours'\) >= (\d+) then/);
+  assert.ok(numero, "no encuentro el tope en el SQL");
+  assert.equal(Number(numero[1]), MAX_AL_DIA);
+  assert.ok(SQL_TOPE.includes(`a.creado_por = '${MARCA_ATLAS}'`));
+  assert.ok(SQL_TOPE.includes(`values (p_id, p_texto, p_vence, p_hora, '${MARCA_ATLAS}', p_para)`));
 });
 
 test("si la base falla → 500, y el log no lleva nada del cuerpo ni del destinatario", async (t) => {

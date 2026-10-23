@@ -23,16 +23,18 @@ Nada de esto es bloqueante ni pone en riesgo datos o seguridad.
 ## Avisos de Atlas: Edge Function `atlas-aviso` y `Notificar` (2026-10-23)
 
 - **Sin desplegar ni medir.** La función y el `Notificar` nuevo están probados con `node --test` y
-  una base falsa; el comportamiento de la base de verdad está supuesto: el `POST` con
-  `on_conflict=id` y `Prefer: resolution=ignore-duplicates,return=representation` (una lista vacía si
-  el id ya existía) y el `HEAD` con `Prefer: count=exact` (el total en `Content-Range`). Lo despliega
-  y lo prueba el dueño con la guía; si la base respondiera otra cosa, la función daría 500 y no se
-  crearía nada.
+  una base falsa; el comportamiento de la base de verdad está supuesto: el `POST` a
+  `/rest/v1/rpc/atlas_crear_aviso`, que devuelve el texto de la función como una cadena JSON
+  (`"creado"`, `"existia"` o `"tope"`). Lo despliega y lo prueba el dueño con la guía; si la base
+  respondiera otra cosa, la función daría 500 y no se crearía nada.
 - **Suena dos veces.** Al crearlo, el disparador de «Te toca a ti» avisa al destinatario en el
   momento («Te lo pasaron»); y, si tiene fecha, vuelve a sonar a su hora. Las dos, solo en sus
   dispositivos.
-- **El tope del día va antes que el id.** Con 30 avisos de Atlas en 24 horas, una petición repetida
-  de uno que ya existe también es 429 (Plutón no reintenta).
+- **El cerrojo del tope, sin medir contra Supabase.** Desde el 2026-10-24 el tope lo pone
+  `atlas_crear_aviso` (`setup/migraciones/2026-10-24-atlas-aviso-tope.sql`): el id, el tope y la
+  inserción en una transacción, tras `pg_advisory_xact_lock`. Que 64 peticiones a la vez dejen 30 está
+  probado con una base falsa que imita el cerrojo y leyendo el SQL, no contra Postgres; lo garantiza
+  el cerrojo de transacción de Postgres, no una prueba de este repo.
 - **La marca se ve.** En la lista compartida, un aviso de Atlas sale con una «A» gris y «Lo anotó
   atlas»: no hay una persona `atlas`.
 - **El tipo de `node --check`.** `node --check` no admite los `.ts` (tampoco el de `panel-subir`); el

@@ -329,8 +329,12 @@ hace con la Edge Function [`atlas-aviso`](supabase/functions/atlas-aviso/).
 - **La función solo inserta**: `{id, texto, vence, hora}`, de 4 KB como mucho, con la clave en la
   cabecera `x-atlas-clave`. 201 creado, 200 si ese id ya existía (no toca nada), 400, 401, 405, 413
   y 429 si Atlas ya creó 30 en las últimas 24 horas. Sin CORS y sin el cuerpo en los logs.
-- **No hace falta migración:** usa las columnas `creado_por` y `para` que ya existen. El
-  destinatario tiene que estar en `personas` (como cualquier `para`).
+- **El tope, en la base:** la función `atlas_crear_aviso` de
+  [`setup/migraciones/2026-10-24-atlas-aviso-tope.sql`](setup/migraciones/2026-10-24-atlas-aviso-tope.sql)
+  mira el id, cuenta los del día e inserta en un solo paso y bajo un cerrojo, así que ni con muchas
+  peticiones a la vez pasan de 30. Solo la puede llamar la service role. Usa las columnas
+  `creado_por` y `para` que ya existen; el destinatario tiene que estar en `personas` (como
+  cualquier `para`).
 
 ### Configuración (una vez)
 
@@ -339,14 +343,18 @@ hace con la Edge Function [`atlas-aviso`](supabase/functions/atlas-aviso/).
 2. **Secretos** (Edge Functions → Secrets): `ATLAS_CLAVE`, pegando esa clave, y `ATLAS_PARA`, el
    correo del dueño en minúsculas, el mismo que tiene en `personas`. Después, **borra el
    portapapeles** como en el panel (y su entrada del historial, Win+V).
-3. **Función.** Edge Functions → *Deploy a new function* → *Via Editor*. En «Function name»,
+3. **La migración, antes que la función.** SQL Editor → *New query*: pega entero
+   [`setup/migraciones/2026-10-24-atlas-aviso-tope.sql`](setup/migraciones/2026-10-24-atlas-aviso-tope.sql)
+   y pulsa *Run*. Tiene que salir una fila con **PASA** (la función existe y solo la llama la service
+   role). Sin ella, `atlas-aviso` responde 500 y no crea nada.
+4. **Función.** Edge Functions → *Deploy a new function* → *Via Editor*. En «Function name»,
    `atlas-aviso`, tal cual, con los dos archivos de
    [`supabase/functions/atlas-aviso/`](supabase/functions/atlas-aviso/): `index.ts` y `validar.mjs`
    (renombra el segundo archivo del editor a `validar.mjs`). Despliégala y, en sus ajustes, apaga
    **Enforce JWT verification**: el PC no tiene sesión, entra con la clave.
-4. **Notificar, otra vez.** Vuelve a desplegar `Notificar` con su `index.ts` y su `reglas.mjs`
+5. **Notificar, otra vez.** Vuelve a desplegar `Notificar` con su `index.ts` y su `reglas.mjs`
    nuevos: sin eso, un aviso de Atlas sonaría en todos los dispositivos.
-5. **Prueba**, sin clave (no crea nada). Sin la cabecera tiene que dar **401**, y con `GET`, **405**:
+6. **Prueba**, sin clave (no crea nada). Sin la cabecera tiene que dar **401**, y con `GET`, **405**:
 
    ```powershell
    try { Invoke-WebRequest -Method Post -Uri "https://TU_REF.supabase.co/functions/v1/atlas-aviso" -ContentType "application/json" -Body "{}" -UseBasicParsing } catch { [int]$_.Exception.Response.StatusCode }
