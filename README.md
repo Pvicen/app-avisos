@@ -343,23 +343,45 @@ hace con la Edge Function [`atlas-aviso`](supabase/functions/atlas-aviso/).
 2. **Secretos** (Edge Functions → Secrets): `ATLAS_CLAVE`, pegando esa clave, y `ATLAS_PARA`, el
    correo del dueño en minúsculas, el mismo que tiene en `personas`. Después, **borra el
    portapapeles** como en el panel (y su entrada del historial, Win+V).
+Lo que se pega en Supabase se copia entero, sin abrir el archivo, con
+`Get-Content -Raw -Encoding UTF8 "<ruta>" | Set-Clipboard`, y se pega con Ctrl+V.
+
 3. **La migración, antes que la función.** SQL Editor → *New query*: pega entero
    [`setup/migraciones/2026-10-24-atlas-aviso-tope.sql`](setup/migraciones/2026-10-24-atlas-aviso-tope.sql)
    y pulsa *Run*. Tiene que salir una fila con **PASA** (la función existe y solo la llama la service
    role). Sin ella, `atlas-aviso` responde 500 y no crea nada.
+
+   ```powershell
+   Get-Content -Raw -Encoding UTF8 "C:\Dev\App de avisos\setup\migraciones\2026-10-24-atlas-aviso-tope.sql" | Set-Clipboard
+   ```
 4. **Función.** Edge Functions → *Deploy a new function* → *Via Editor*. En «Function name»,
    `atlas-aviso`, tal cual, con los dos archivos de
    [`supabase/functions/atlas-aviso/`](supabase/functions/atlas-aviso/): `index.ts` y `validar.mjs`
-   (renombra el segundo archivo del editor a `validar.mjs`). Despliégala y, en sus ajustes, apaga
-   **Enforce JWT verification**: el PC no tiene sesión, entra con la clave.
-5. **Notificar, otra vez.** Vuelve a desplegar `Notificar` con su `index.ts` y su `reglas.mjs`
-   nuevos: sin eso, un aviso de Atlas sonaría en todos los dispositivos.
-6. **Prueba**, sin clave (no crea nada). Sin la cabecera tiene que dar **401**, y con `GET`, **405**:
+   (renombra el segundo archivo del editor a `validar.mjs`), cada uno copiado así, uno y después el
+   otro. Despliégala y, en sus ajustes, apaga **Enforce JWT verification**: el PC no tiene sesión,
+   entra con la clave.
 
    ```powershell
-   try { Invoke-WebRequest -Method Post -Uri "https://TU_REF.supabase.co/functions/v1/atlas-aviso" -ContentType "application/json" -Body "{}" -UseBasicParsing } catch { [int]$_.Exception.Response.StatusCode }
-   try { Invoke-WebRequest -Method Get -Uri "https://TU_REF.supabase.co/functions/v1/atlas-aviso" -UseBasicParsing } catch { [int]$_.Exception.Response.StatusCode }
+   Get-Content -Raw -Encoding UTF8 "C:\Dev\App de avisos\supabase\functions\atlas-aviso\index.ts" | Set-Clipboard
+   Get-Content -Raw -Encoding UTF8 "C:\Dev\App de avisos\supabase\functions\atlas-aviso\validar.mjs" | Set-Clipboard
    ```
+5. **Notificar, otra vez.** Vuelve a desplegar `Notificar` con su `index.ts` y su `reglas.mjs`
+   nuevos, copiados igual (`supabase\functions\notificar\`): sin eso, un aviso de Atlas sonaría en
+   todos los dispositivos.
+6. **Prueba**, sin clave (no crea nada). Enseña el código y el cuerpo de cada respuesta:
+
+   ```powershell
+   $url = "https://TU_REF.supabase.co/functions/v1/atlas-aviso"
+   try { Invoke-WebRequest -Method Post -Uri $url -ContentType "application/json" -Body "{}" -UseBasicParsing } catch { "POST $([int]$_.Exception.Response.StatusCode) $($_.ErrorDetails.Message)" }
+   try { Invoke-WebRequest -Method Get -Uri $url -UseBasicParsing } catch { "GET $([int]$_.Exception.Response.StatusCode) $($_.ErrorDetails.Message)" }
+   ```
+
+   | Lo que sale | Qué quiere decir |
+   |---|---|
+   | `POST 401 {"error":"clave incorrecta"}` y `GET 405 {"error":"solo se acepta POST"}` | bien |
+   | `GET 401` con otro cuerpo | la puerta de Supabase: «Enforce JWT verification» sigue encendido (paso 4) |
+   | `500 {"error":"la función no está configurada"}` | faltan los secretos (paso 2) |
+   | `404` | la función no se llama `atlas-aviso` (paso 4) |
 
 Cada vez que cambie `validar.mjs` hay que volver a desplegar la función.
 

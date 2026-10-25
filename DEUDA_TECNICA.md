@@ -22,11 +22,10 @@ Nada de esto es bloqueante ni pone en riesgo datos o seguridad.
 
 ## Avisos de Atlas: Edge Function `atlas-aviso` y `Notificar` (2026-10-23)
 
-- **Sin desplegar ni medir.** La función y el `Notificar` nuevo están probados con `node --test` y
-  una base falsa; el comportamiento de la base de verdad está supuesto: el `POST` a
-  `/rest/v1/rpc/atlas_crear_aviso`, que devuelve el texto de la función como una cadena JSON
-  (`"creado"`, `"existia"` o `"tope"`). Lo despliega y lo prueba el dueño con la guía; si la base
-  respondiera otra cosa, la función daría 500 y no se crearía nada.
+- ~~**Sin desplegar ni medir.**~~ **Cerrada el 2026-10-25** (Contrato N3 §6.6): la función y el
+  `Notificar` nuevo están desplegados y probados (las sondas del 25/10). Lo de antes: estaban probados
+  con `node --test` y una base falsa, y el comportamiento de la base de verdad, supuesto (el `POST` a
+  `/rest/v1/rpc/atlas_crear_aviso`, que devuelve `"creado"`, `"existia"` o `"tope"`).
 - **Suena dos veces.** Al crearlo, el disparador de «Te toca a ti» avisa al destinatario en el
   momento («Te lo pasaron»); y, si tiene fecha, vuelve a sonar a su hora. Las dos, solo en sus
   dispositivos.
